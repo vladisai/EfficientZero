@@ -6,11 +6,13 @@ import numpy as np
 import ray
 import torch
 from torch.utils.tensorboard import SummaryWriter
+import time
 
 from core.test import test
 from core.train import train
 from core.utils import init_logger, make_results_dir, set_seed
 if __name__ == '__main__':
+    t = time.time()
     # Lets gather arguments
     parser = argparse.ArgumentParser(description='EfficientZero')
     parser.add_argument('--env', required=True, help='Name of the environment')
@@ -54,6 +56,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type=str, default='./results/test_model.p', help='load model path')
     parser.add_argument('--object_store_memory', type=int, default=150 * 1024 * 1024 * 1024, help='object store memory')
 
+
     # Process arguments
     args = parser.parse_args()
     args.device = 'cuda' if (not args.no_cuda) and torch.cuda.is_available() else 'cpu'
@@ -92,6 +95,11 @@ if __name__ == '__main__':
                 model_path = args.model_path
             else:
                 model_path = None
+            # TO REMOVE:
+            # game_config.training_steps = 2100
+            # game_config.last_steps = 0
+            # logging.getLogger('train').info(f'start_time: {time.time() - t}')
+            # END
             model, weights = train(game_config, summary_writer, model_path)
             model.set_weights(weights)
             total_steps = game_config.training_steps + game_config.last_steps
@@ -133,3 +141,4 @@ if __name__ == '__main__':
         ray.shutdown()
     except Exception as e:
         logging.getLogger('root').error(e, exc_info=True)
+    logging.getLogger('train').info(f'total_time: {time.time() - t}')
