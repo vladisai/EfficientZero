@@ -34,6 +34,7 @@ class GameHistory:
     A block of game history from a full trajectories.
     The horizons of Atari games are quite large. Split the whole trajectory into several history blocks.
     """
+
     def __init__(self, action_space, max_length=200, config=None):
         """
         Parameters
@@ -50,7 +51,11 @@ class GameHistory:
         self.stacked_observations = config.stacked_observations
         self.discount = config.discount
         self.action_space_size = config.action_space_size
-        self.zero_obs_shape = (config.obs_shape[-2], config.obs_shape[-1], config.image_channel)
+        self.zero_obs_shape = (
+            config.obs_shape[-2],
+            config.obs_shape[-1],
+            config.image_channel,
+        )
 
         self.child_visits = []
         self.root_values = []
@@ -81,7 +86,13 @@ class GameHistory:
         for observation in init_observations:
             self.obs_history.append(copy.deepcopy(observation))
 
-    def pad_over(self, next_block_observations, next_block_rewards, next_block_root_values, next_block_child_visits):
+    def pad_over(
+        self,
+        next_block_observations,
+        next_block_rewards,
+        next_block_root_values,
+        next_block_child_visits,
+    ):
         """To make sure the correction of value targets, we need to add (o_t, r_t, etc) from the next history block
         , which is necessary for the bootstrapped values at the end states of this history block.
         Eg: len = 100; target value v_100 = r_100 + gamma^1 r_101 + ... + gamma^4 r_104 + gamma^5 v_105,
@@ -99,8 +110,14 @@ class GameHistory:
         """
         assert len(next_block_observations) <= self.config.num_unroll_steps
         assert len(next_block_child_visits) <= self.config.num_unroll_steps
-        assert len(next_block_root_values) <= self.config.num_unroll_steps + self.config.td_steps
-        assert len(next_block_rewards) <= self.config.num_unroll_steps + self.config.td_steps - 1
+        assert (
+            len(next_block_root_values)
+            <= self.config.num_unroll_steps + self.config.td_steps
+        )
+        assert (
+            len(next_block_rewards)
+            <= self.config.num_unroll_steps + self.config.td_steps - 1
+        )
 
         # notice: next block observation should start from (stacked_observation - 1) in next trajectory
         for observation in next_block_observations:
@@ -139,7 +156,9 @@ class GameHistory:
         padding: bool
             True -> padding frames if (t + stack frames) are out of trajectory
         """
-        frames = ray.get(self.obs_history)[i:i + self.stacked_observations + extra_len]
+        frames = ray.get(self.obs_history)[
+            i : i + self.stacked_observations + extra_len
+        ]
         if padding:
             pad_len = self.stacked_observations + extra_len - len(frames)
             if pad_len > 0:
@@ -151,12 +170,15 @@ class GameHistory:
 
     def zero_obs(self):
         # return a zero frame
-        return [np.zeros(self.zero_obs_shape, dtype=np.uint8) for _ in range(self.stacked_observations)]
+        return [
+            np.zeros(self.zero_obs_shape, dtype=np.uint8)
+            for _ in range(self.stacked_observations)
+        ]
 
     def step_obs(self):
         # return an observation of correct format for model inference
         index = len(self.rewards)
-        frames = self.obs_history[index:index + self.stacked_observations]
+        frames = self.obs_history[index : index + self.stacked_observations]
         if self.config.cvt_string:
             frames = [str_to_arr(obs, self.config.gray_scale) for obs in frames]
         return frames
@@ -174,14 +196,26 @@ class GameHistory:
         self.child_visits = np.array(self.child_visits)
         self.root_values = np.array(self.root_values)
 
+    def get_obs_history(self):
+        # unput the obs_history
+        self.obs_history = ray.get(self.obs_history)
+
+    def put_obs_history(self):
+        # put the obs_history
+        self.obs_history = ray.put(self.obs_history)
+
     def store_search_stats(self, visit_counts, root_value, idx: int = None):
         # store the visit count distributions and value of the root node after MCTS
         sum_visits = sum(visit_counts)
         if idx is None:
-            self.child_visits.append([visit_count / sum_visits for visit_count in visit_counts])
+            self.child_visits.append(
+                [visit_count / sum_visits for visit_count in visit_counts]
+            )
             self.root_values.append(root_value)
         else:
-            self.child_visits[idx] = [visit_count / sum_visits for visit_count in visit_counts]
+            self.child_visits[idx] = [
+                visit_count / sum_visits for visit_count in visit_counts
+            ]
             self.root_values[idx] = root_value
 
     def __len__(self):

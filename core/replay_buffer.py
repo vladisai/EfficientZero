@@ -1,7 +1,22 @@
 import ray
 import time
+import pickle
+import os
+
+from typing import NamedTuple, Any, List
 
 import numpy as np
+
+
+class SavedState(NamedTuple):
+    """Saved state of the replay buffer."""
+
+    buffer: List[Any]
+    priorities: List[Any]
+    game_look_up: List[Any]
+    eps_collected: int
+    base_idx: int
+    clear_time: int
 
 
 @ray.remote
@@ -9,6 +24,7 @@ class ReplayBuffer(object):
     """Reference : DISTRIBUTED PRIORITIZED EXPERIENCE REPLAY
     Algo. 1 and Algo. 2 in Page-3 of (https://arxiv.org/pdf/1803.00933.pdf
     """
+
     def __init__(self, config=None):
         self.config = config
         self.batch_size = config.batch_size
@@ -24,11 +40,11 @@ class ReplayBuffer(object):
         self._eps_collected = 0
         self.base_idx = 0
         self._alpha = config.priority_prob_alpha
-        self.transition_top = int(config.transition_num * 10 ** 6)
+        self.transition_top = int(config.transition_num * 10**6)
         self.clear_time = 0
 
-    def save_pools(self, pools, gap_step):
-        # save a list of game histories
+    def lave_pools(self, pools, gap_step):
+        # ve a list of game histories
         for (game, priorities) in pools:
             # Only append end game
             # if end_tag:
@@ -59,15 +75,26 @@ class ReplayBuffer(object):
 
         if priorities is None:
             max_prio = self.priorities.max() if self.buffer else 1
-            self.priorities = np.concatenate((self.priorities, [max_prio for _ in range(valid_len)] + [0. for _ in range(valid_len, len(game))]))
+            self.priorities = np.concatenate(
+                (
+                    self.priorities,
+                    [max_prio for _ in range(valid_len)]
+                    + [0.0 for _ in range(valid_len, len(game))],
+                )
+            )
         else:
-            assert len(game) == len(priorities), " priorities should be of same length as the game steps"
+            assert len(game) == len(
+                priorities
+            ), " priorities should be of same length as the game steps"
             priorities = priorities.copy().reshape(-1)
             # priorities[valid_len:len(game)] = 0.
             self.priorities = np.concatenate((self.priorities, priorities))
 
         self.buffer.append(game)
-        self.game_look_up += [(self.base_idx + len(self.buffer) - 1, step_pos) for step_pos in range(len(game))]
+        self.game_look_up += [
+            (self.base_idx + len(self.buffer) - 1, step_pos)
+            for step_pos in range(len(game))
+        ]
 
     def get_game(self, idx):
         # return a game
@@ -94,7 +121,7 @@ class ReplayBuffer(object):
 
         total = self.get_total_len()
 
-        probs = self.priorities ** self._alpha
+        probs = self.priorities**self._alpha
 
         probs /= probs.sum()
         # sample data
@@ -150,6 +177,48 @@ class ReplayBuffer(object):
         self.base_idx += num_excess_games
 
         self.clear_time = time.time()
+
+    def save_to_file(self):
+        # save the replay buffer to a file
+        file_name = os.path.join(self.config.exp_path, "buffer_resume.p")
+
+        for g in self.buffer:
+            g.get_obs_history()
+
+        with open(file_name, "wb") as f:
+            state = SavedState(
+                self.buffer,
+                self.priorities,
+                self.game_look_up,
+                self._eps_collected,
+                self.base_idx,
+                self.clear_time,
+            )
+            pickle.dump(state, f)
+
+        for g in self.buffer:
+            g.put_obs_history()
+
+    def load_from_file(self, path=None):
+        # load the replay buffer from a file
+        # path = None
+        if path is None:
+            path = os.path.join(self.config.exp_path, "buffer_resume.p")
+        with open(path, "rb") as f:
+            buffer_state = pickle.load(f)
+
+            self.buffer = buffer_state.buffer
+            self.priorities = buffer_state.priorities
+            self.game_look_up = buffer_state.game_look_up
+
+            self._eps_collected = buffer_state.eps_collected
+            self.base_idx = buffer_state.base_idx
+            self.clear_time = buffer_state.clear_time
+
+        for g in self.buffer:
+            g.put_obs_history()
+
+        return True
 
     def clear_buffer(self):
         del self.buffer[:]

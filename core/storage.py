@@ -81,7 +81,18 @@ class SharedStorage(object):
     def get_counter(self):
         return self.step_counter
 
-    def set_data_worker_logs(self, eps_len, eps_len_max, eps_ori_reward, eps_reward, eps_reward_max, temperature, visit_entropy, priority_self_play, distributions):
+    def set_data_worker_logs(
+        self,
+        eps_len,
+        eps_len_max,
+        eps_ori_reward,
+        eps_reward,
+        eps_reward_max,
+        temperature,
+        visit_entropy,
+        priority_self_play,
+        distributions,
+    ):
         self.eps_lengths.append(eps_len)
         self.eps_lengths_max.append(eps_len_max)
         self.ori_reward_log.append(eps_ori_reward)
@@ -111,8 +122,12 @@ class SharedStorage(object):
             eps_lengths = sum(self.eps_lengths) / len(self.eps_lengths)
             eps_lengths_max = sum(self.eps_lengths_max) / len(self.eps_lengths_max)
             temperature = sum(self.temperature_log) / len(self.temperature_log)
-            visit_entropy = sum(self.visit_entropies_log) / len(self.visit_entropies_log)
-            priority_self_play = sum(self.priority_self_play_log) / len(self.priority_self_play_log)
+            visit_entropy = sum(self.visit_entropies_log) / len(
+                self.visit_entropies_log
+            )
+            priority_self_play = sum(self.priority_self_play_log) / len(
+                self.priority_self_play_log
+            )
             distributions = self.distributions_log
 
             self.ori_reward_log = []
@@ -145,4 +160,16 @@ class SharedStorage(object):
             test_dict = None
             test_counter = None
 
-        return ori_reward, reward, reward_max, eps_lengths, eps_lengths_max, test_counter, test_dict, temperature, visit_entropy, priority_self_play, distributions
+        return (
+            ori_reward,
+            reward,
+            reward_max,
+            eps_lengths,
+            eps_lengths_max,
+            test_counter,
+            test_dict,
+            temperature,
+            visit_entropy,
+            priority_self_play,
+            distributions,
+        )

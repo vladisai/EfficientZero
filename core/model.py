@@ -30,7 +30,7 @@ def concat_output_value(output_lst):
 def concat_output(output_lst):
     # concat the model output
     value_lst, reward_lst, policy_logits_lst, hidden_state_lst = [], [], [], []
-    reward_hidden_c_lst, reward_hidden_h_lst =[], []
+    reward_hidden_c_lst, reward_hidden_h_lst = [], []
     for output in output_lst:
         value_lst.append(output.value)
         reward_lst.append(output.value_prefix)
@@ -47,11 +47,19 @@ def concat_output(output_lst):
     reward_hidden_c_lst = np.expand_dims(np.concatenate(reward_hidden_c_lst), axis=0)
     reward_hidden_h_lst = np.expand_dims(np.concatenate(reward_hidden_h_lst), axis=0)
 
-    return value_lst, reward_lst, policy_logits_lst, hidden_state_lst, (reward_hidden_c_lst, reward_hidden_h_lst)
+    return (
+        value_lst,
+        reward_lst,
+        policy_logits_lst,
+        hidden_state_lst,
+        (reward_hidden_c_lst, reward_hidden_h_lst),
+    )
 
 
 class BaseNet(nn.Module):
-    def __init__(self, inverse_value_transform, inverse_reward_transform, lstm_hidden_size):
+    def __init__(
+        self, inverse_value_transform, inverse_reward_transform, lstm_hidden_size
+    ):
         """Base Network
         schedule_timesteps. After this many timesteps pass final_p is
         returned.
@@ -90,24 +98,38 @@ class BaseNet(nn.Module):
             state = state.detach().cpu().numpy()
             actor_logit = actor_logit.detach().cpu().numpy()
             # zero initialization for reward (value prefix) hidden states
-            reward_hidden = (torch.zeros(1, num, self.lstm_hidden_size).detach().cpu().numpy(),
-                             torch.zeros(1, num, self.lstm_hidden_size).detach().cpu().numpy())
+            reward_hidden = (
+                torch.zeros(1, num, self.lstm_hidden_size).detach().cpu().numpy(),
+                torch.zeros(1, num, self.lstm_hidden_size).detach().cpu().numpy(),
+            )
         else:
             # zero initialization for reward (value prefix) hidden states
-            reward_hidden = (torch.zeros(1, num, self.lstm_hidden_size).to('cuda'), torch.zeros(1, num, self.lstm_hidden_size).to('cuda'))
+            reward_hidden = (
+                torch.zeros(1, num, self.lstm_hidden_size).to("cuda"),
+                torch.zeros(1, num, self.lstm_hidden_size).to("cuda"),
+            )
 
-        return NetworkOutput(value, [0. for _ in range(num)], actor_logit, state, reward_hidden)
+        return NetworkOutput(
+            value, [0.0 for _ in range(num)], actor_logit, state, reward_hidden
+        )
 
     def recurrent_inference(self, hidden_state, reward_hidden, action) -> NetworkOutput:
-        state, reward_hidden, value_prefix = self.dynamics(hidden_state, reward_hidden, action)
+        state, reward_hidden, value_prefix = self.dynamics(
+            hidden_state, reward_hidden, action
+        )
         actor_logit, value = self.prediction(state)
 
         if not self.training:
             # if not in training, obtain the scalars of the value/reward
             value = self.inverse_value_transform(value).detach().cpu().numpy()
-            value_prefix = self.inverse_reward_transform(value_prefix).detach().cpu().numpy()
+            value_prefix = (
+                self.inverse_reward_transform(value_prefix).detach().cpu().numpy()
+            )
             state = state.detach().cpu().numpy()
-            reward_hidden = (reward_hidden[0].detach().cpu().numpy(), reward_hidden[1].detach().cpu().numpy())
+            reward_hidden = (
+                reward_hidden[0].detach().cpu().numpy(),
+                reward_hidden[1].detach().cpu().numpy(),
+            )
             actor_logit = actor_logit.detach().cpu().numpy()
 
         return NetworkOutput(value, value_prefix, actor_logit, state, reward_hidden)

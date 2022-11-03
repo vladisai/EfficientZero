@@ -3,7 +3,7 @@
 #SBATCH --job-name=speed_test
 #SBATCH --output=/checkpoint/vladsobal/results/EfficientZero/%j.out
 #SBATCH --error=/checkpoint/vladsobal/results/EfficientZero/%j.err
-#SBATCH --time=2-00:00:00
+#SBATCH --time=1-00:00:00
 #SBATCH --nodes=1
 
 #SBATCH --open-mode=append

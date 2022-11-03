@@ -13,7 +13,9 @@ from core.utils import prepare_observation_lst, LinearSchedule
 
 @ray.remote
 class BatchWorker_CPU(object):
-    def __init__(self, worker_id, replay_buffer, storage, batch_storage, mcts_storage, config):
+    def __init__(
+        self, worker_id, replay_buffer, storage, batch_storage, mcts_storage, config
+    ):
         """CPU Batch Worker for reanalyzing targets, see Appendix.
         Prepare the context concerning CPU overhead
         Parameters
@@ -38,9 +40,15 @@ class BatchWorker_CPU(object):
 
         self.last_model_index = -1
         self.batch_max_num = 20
-        self.beta_schedule = LinearSchedule(config.training_steps + config.last_steps, initial_p=config.priority_prob_beta, final_p=1.0)
+        self.beta_schedule = LinearSchedule(
+            config.training_steps + config.last_steps,
+            initial_p=config.priority_prob_beta,
+            final_p=1.0,
+        )
 
-    def _prepare_reward_value_context(self, indices, games, state_index_lst, total_transitions):
+    def _prepare_reward_value_context(
+        self, indices, games, state_index_lst, total_transitions
+    ):
         """prepare the context of rewards and values for reanalyzing part
         Parameters
         ----------
@@ -74,7 +82,9 @@ class BatchWorker_CPU(object):
             # prepare the corresponding observations for bootstrapped values o_{t+k}
             game_obs = game.obs(state_index + td_steps, config.num_unroll_steps)
             rewards_lst.append(game.rewards)
-            for current_index in range(state_index, state_index + config.num_unroll_steps + 1):
+            for current_index in range(
+                state_index, state_index + config.num_unroll_steps + 1
+            ):
                 td_steps_lst.append(td_steps)
                 bootstrap_index = current_index + td_steps
 
@@ -90,7 +100,14 @@ class BatchWorker_CPU(object):
                 value_obs_lst.append(obs)
 
         value_obs_lst = ray.put(value_obs_lst)
-        reward_value_context = [value_obs_lst, value_mask, state_index_lst, rewards_lst, traj_lens, td_steps_lst]
+        reward_value_context = [
+            value_obs_lst,
+            value_mask,
+            state_index_lst,
+            rewards_lst,
+            traj_lens,
+            td_steps_lst,
+        ]
         return reward_value_context
 
     def _prepare_policy_non_re_context(self, indices, games, state_index_lst):
@@ -142,7 +159,9 @@ class BatchWorker_CPU(object):
                 child_visits.append(game.child_visits)
                 # prepare the corresponding observations
                 game_obs = game.obs(state_index, config.num_unroll_steps)
-                for current_index in range(state_index, state_index + config.num_unroll_steps + 1):
+                for current_index in range(
+                    state_index, state_index + config.num_unroll_steps + 1
+                ):
 
                     if current_index < traj_len:
                         policy_mask.append(1)
@@ -155,7 +174,14 @@ class BatchWorker_CPU(object):
                     policy_obs_lst.append(obs)
 
         policy_obs_lst = ray.put(policy_obs_lst)
-        policy_re_context = [policy_obs_lst, policy_mask, state_index_lst, indices, child_visits, traj_lens]
+        policy_re_context = [
+            policy_obs_lst,
+            policy_mask,
+            state_index_lst,
+            indices,
+            child_visits,
+            traj_lens,
+        ]
         return policy_re_context
 
     def make_batch(self, batch_context, ratio, weights=None):
@@ -183,15 +209,26 @@ class BatchWorker_CPU(object):
             game = game_lst[i]
             game_pos = game_pos_lst[i]
 
-            _actions = game.actions[game_pos:game_pos + self.config.num_unroll_steps].tolist()
+            _actions = game.actions[
+                game_pos : game_pos + self.config.num_unroll_steps
+            ].tolist()
             # add mask for invalid actions (out of trajectory)
-            _mask = [1. for i in range(len(_actions))]
-            _mask += [0. for _ in range(self.config.num_unroll_steps - len(_mask))]
+            _mask = [1.0 for i in range(len(_actions))]
+            _mask += [0.0 for _ in range(self.config.num_unroll_steps - len(_mask))]
 
-            _actions += [np.random.randint(0, game.action_space_size) for _ in range(self.config.num_unroll_steps - len(_actions))]
+            _actions += [
+                np.random.randint(0, game.action_space_size)
+                for _ in range(self.config.num_unroll_steps - len(_actions))
+            ]
 
             # obtain the input observations
-            obs_lst.append(game_lst[i].obs(game_pos_lst[i], extra_len=self.config.num_unroll_steps, padding=True))
+            obs_lst.append(
+                game_lst[i].obs(
+                    game_pos_lst[i],
+                    extra_len=self.config.num_unroll_steps,
+                    padding=True,
+                )
+            )
             action_lst.append(_actions)
             mask_lst.append(_mask)
 
@@ -200,31 +237,50 @@ class BatchWorker_CPU(object):
         obs_lst = prepare_observation_lst(obs_lst)
 
         # formalize the inputs of a batch
-        inputs_batch = [obs_lst, action_lst, mask_lst, indices_lst, weights_lst, make_time_lst]
+        inputs_batch = [
+            obs_lst,
+            action_lst,
+            mask_lst,
+            indices_lst,
+            weights_lst,
+            make_time_lst,
+        ]
         for i in range(len(inputs_batch)):
             inputs_batch[i] = np.asarray(inputs_batch[i])
 
         total_transitions = ray.get(self.replay_buffer.get_total_len.remote())
 
         # obtain the context of value targets
-        reward_value_context = self._prepare_reward_value_context(indices_lst, game_lst, game_pos_lst, total_transitions)
+        reward_value_context = self._prepare_reward_value_context(
+            indices_lst, game_lst, game_pos_lst, total_transitions
+        )
 
         # 0:re_num -> reanalyzed policy, re_num:end -> non reanalyzed policy
         # reanalyzed policy
         if re_num > 0:
             # obtain the context of reanalyzed policy targets
-            policy_re_context = self._prepare_policy_re_context(indices_lst[:re_num], game_lst[:re_num], game_pos_lst[:re_num])
+            policy_re_context = self._prepare_policy_re_context(
+                indices_lst[:re_num], game_lst[:re_num], game_pos_lst[:re_num]
+            )
         else:
             policy_re_context = None
 
         # non reanalyzed policy
         if re_num < batch_size:
             # obtain the context of non-reanalyzed policy targets
-            policy_non_re_context = self._prepare_policy_non_re_context(indices_lst[re_num:], game_lst[re_num:], game_pos_lst[re_num:])
+            policy_non_re_context = self._prepare_policy_non_re_context(
+                indices_lst[re_num:], game_lst[re_num:], game_pos_lst[re_num:]
+            )
         else:
             policy_non_re_context = None
 
-        countext = reward_value_context, policy_re_context, policy_non_re_context, inputs_batch, weights
+        countext = (
+            reward_value_context,
+            policy_re_context,
+            policy_non_re_context,
+            inputs_batch,
+            weights,
+        )
         self.mcts_storage.push(countext)
 
     def run(self):
@@ -237,12 +293,19 @@ class BatchWorker_CPU(object):
                 time.sleep(1)
                 continue
 
-            ray_data_lst = [self.storage.get_counter.remote(), self.storage.get_target_weights.remote()]
+            ray_data_lst = [
+                self.storage.get_counter.remote(),
+                self.storage.get_target_weights.remote(),
+            ]
             trained_steps, target_weights = ray.get(ray_data_lst)
 
             beta = self.beta_schedule.value(trained_steps)
             # obtain the batch context from replay buffer
-            batch_context = ray.get(self.replay_buffer.prepare_batch_context.remote(self.config.batch_size, beta))
+            batch_context = ray.get(
+                self.replay_buffer.prepare_batch_context.remote(
+                    self.config.batch_size, beta
+                )
+            )
             # break
             if trained_steps >= self.config.training_steps + self.config.last_steps:
                 time.sleep(30)
@@ -257,15 +320,21 @@ class BatchWorker_CPU(object):
             if self.mcts_storage.get_len() < 20:
                 # Observation will be deleted if replay buffer is full. (They are stored in the ray object store)
                 try:
-                    self.make_batch(batch_context, self.config.revisit_policy_search_rate, weights=target_weights)
+                    self.make_batch(
+                        batch_context,
+                        self.config.revisit_policy_search_rate,
+                        weights=target_weights,
+                    )
                 except:
-                    print('Data is deleted...')
+                    print("Data is deleted...")
                     time.sleep(0.1)
 
 
 @ray.remote(num_gpus=0.125)
 class BatchWorker_GPU(object):
-    def __init__(self, worker_id, replay_buffer, storage, batch_storage, mcts_storage, config):
+    def __init__(
+        self, worker_id, replay_buffer, storage, batch_storage, mcts_storage, config
+    ):
         """GPU Batch Worker for reanalyzing targets, see Appendix.
         receive the context from CPU maker and deal with GPU overheads
         Parameters
@@ -296,9 +365,15 @@ class BatchWorker_GPU(object):
         self.last_model_index = 0
 
     def _prepare_reward_value(self, reward_value_context):
-        """prepare reward and value targets from the context of rewards and values
-        """
-        value_obs_lst, value_mask, state_index_lst, rewards_lst, traj_lens, td_steps_lst = reward_value_context
+        """prepare reward and value targets from the context of rewards and values"""
+        (
+            value_obs_lst,
+            value_mask,
+            state_index_lst,
+            rewards_lst,
+            traj_lens,
+            td_steps_lst,
+        ) = reward_value_context
         value_obs_lst = ray.get(value_obs_lst)
         device = self.config.device
         batch_size = len(value_obs_lst)
@@ -313,8 +388,13 @@ class BatchWorker_GPU(object):
             for i in range(slices):
                 beg_index = m_batch * i
                 end_index = m_batch * (i + 1)
-                m_obs = torch.from_numpy(value_obs_lst[beg_index:end_index]).to(device).float() / 255.0
-                if self.config.amp_type == 'torch_amp':
+                m_obs = (
+                    torch.from_numpy(value_obs_lst[beg_index:end_index])
+                    .to(device)
+                    .float()
+                    / 255.0
+                )
+                if self.config.amp_type == "torch_amp":
                     with autocast():
                         m_output = self.model.initial_inference(m_obs)
                 else:
@@ -325,13 +405,38 @@ class BatchWorker_GPU(object):
             if self.config.use_root_value:
                 # use the root values from MCTS
                 # the root values have limited improvement but require much more GPU actors;
-                _, value_prefix_pool, policy_logits_pool, hidden_state_roots, reward_hidden_roots = concat_output(network_output)
+                (
+                    _,
+                    value_prefix_pool,
+                    policy_logits_pool,
+                    hidden_state_roots,
+                    reward_hidden_roots,
+                ) = concat_output(network_output)
                 value_prefix_pool = value_prefix_pool.squeeze().tolist()
                 policy_logits_pool = policy_logits_pool.tolist()
-                roots = cytree.Roots(batch_size, self.config.action_space_size, self.config.num_simulations)
-                noises = [np.random.dirichlet([self.config.root_dirichlet_alpha] * self.config.action_space_size).astype(np.float32).tolist() for _ in range(batch_size)]
-                roots.prepare(self.config.root_exploration_fraction, noises, value_prefix_pool, policy_logits_pool)
-                MCTS(self.config).search(roots, self.model, hidden_state_roots, reward_hidden_roots)
+                roots = cytree.Roots(
+                    batch_size,
+                    self.config.action_space_size,
+                    self.config.num_simulations,
+                )
+                noises = [
+                    np.random.dirichlet(
+                        [self.config.root_dirichlet_alpha]
+                        * self.config.action_space_size
+                    )
+                    .astype(np.float32)
+                    .tolist()
+                    for _ in range(batch_size)
+                ]
+                roots.prepare(
+                    self.config.root_exploration_fraction,
+                    noises,
+                    value_prefix_pool,
+                    policy_logits_pool,
+                )
+                MCTS(self.config).search(
+                    roots, self.model, hidden_state_roots, reward_hidden_roots
+                )
 
                 roots_values = roots.get_values()
                 value_lst = np.array(roots_values)
@@ -340,12 +445,17 @@ class BatchWorker_GPU(object):
                 value_lst = concat_output_value(network_output)
 
             # get last state value
-            value_lst = value_lst.reshape(-1) * (np.array([self.config.discount for _ in range(batch_size)]) ** td_steps_lst)
+            value_lst = value_lst.reshape(-1) * (
+                np.array([self.config.discount for _ in range(batch_size)])
+                ** td_steps_lst
+            )
             value_lst = value_lst * np.array(value_mask)
             value_lst = value_lst.tolist()
 
             value_index = 0
-            for traj_len_non_re, reward_lst, state_index in zip(traj_lens, rewards_lst, state_index_lst):
+            for traj_len_non_re, reward_lst, state_index in zip(
+                traj_lens, rewards_lst, state_index_lst
+            ):
                 # traj_len = len(game)
                 target_values = []
                 target_value_prefixs = []
@@ -353,11 +463,15 @@ class BatchWorker_GPU(object):
                 horizon_id = 0
                 value_prefix = 0.0
                 base_index = state_index
-                for current_index in range(state_index, state_index + self.config.num_unroll_steps + 1):
+                for current_index in range(
+                    state_index, state_index + self.config.num_unroll_steps + 1
+                ):
                     bootstrap_index = current_index + td_steps_lst[value_index]
                     # for i, reward in enumerate(game.rewards[current_index:bootstrap_index]):
-                    for i, reward in enumerate(reward_lst[current_index:bootstrap_index]):
-                        value_lst[value_index] += reward * self.config.discount ** i
+                    for i, reward in enumerate(
+                        reward_lst[current_index:bootstrap_index]
+                    ):
+                        value_lst[value_index] += reward * self.config.discount**i
 
                     # reset every lstm_horizon_len
                     if horizon_id % self.config.lstm_horizon_len == 0:
@@ -369,7 +483,9 @@ class BatchWorker_GPU(object):
                         target_values.append(value_lst[value_index])
                         # Since the horizon is small and the discount is close to 1.
                         # Compute the reward sum to approximate the value prefix for simplification
-                        value_prefix += reward_lst[current_index]  # * config.discount ** (current_index - base_index)
+                        value_prefix += reward_lst[
+                            current_index
+                        ]  # * config.discount ** (current_index - base_index)
                         target_value_prefixs.append(value_prefix)
                     else:
                         target_values.append(0)
@@ -384,13 +500,19 @@ class BatchWorker_GPU(object):
         return batch_value_prefixs, batch_values
 
     def _prepare_policy_re(self, policy_re_context):
-        """prepare policy targets from the reanalyzed context of policies
-        """
+        """prepare policy targets from the reanalyzed context of policies"""
         batch_policies_re = []
         if policy_re_context is None:
             return batch_policies_re
 
-        policy_obs_lst, policy_mask, state_index_lst, indices, child_visits, traj_lens = policy_re_context
+        (
+            policy_obs_lst,
+            policy_mask,
+            state_index_lst,
+            indices,
+            child_visits,
+            traj_lens,
+        ) = policy_re_context
         policy_obs_lst = ray.get(policy_obs_lst)
         batch_size = len(policy_obs_lst)
         device = self.config.device
@@ -405,38 +527,71 @@ class BatchWorker_GPU(object):
                 beg_index = m_batch * i
                 end_index = m_batch * (i + 1)
 
-                m_obs = torch.from_numpy(policy_obs_lst[beg_index:end_index]).to(device).float() / 255.0
-                if self.config.amp_type == 'torch_amp':
+                m_obs = (
+                    torch.from_numpy(policy_obs_lst[beg_index:end_index])
+                    .to(device)
+                    .float()
+                    / 255.0
+                )
+                if self.config.amp_type == "torch_amp":
                     with autocast():
                         m_output = self.model.initial_inference(m_obs)
                 else:
                     m_output = self.model.initial_inference(m_obs)
                 network_output.append(m_output)
 
-            _, value_prefix_pool, policy_logits_pool, hidden_state_roots, reward_hidden_roots = concat_output(network_output)
+            (
+                _,
+                value_prefix_pool,
+                policy_logits_pool,
+                hidden_state_roots,
+                reward_hidden_roots,
+            ) = concat_output(network_output)
             value_prefix_pool = value_prefix_pool.squeeze().tolist()
             policy_logits_pool = policy_logits_pool.tolist()
 
-            roots = cytree.Roots(batch_size, self.config.action_space_size, self.config.num_simulations)
-            noises = [np.random.dirichlet([self.config.root_dirichlet_alpha] * self.config.action_space_size).astype(np.float32).tolist() for _ in range(batch_size)]
-            roots.prepare(self.config.root_exploration_fraction, noises, value_prefix_pool, policy_logits_pool)
+            roots = cytree.Roots(
+                batch_size, self.config.action_space_size, self.config.num_simulations
+            )
+            noises = [
+                np.random.dirichlet(
+                    [self.config.root_dirichlet_alpha] * self.config.action_space_size
+                )
+                .astype(np.float32)
+                .tolist()
+                for _ in range(batch_size)
+            ]
+            roots.prepare(
+                self.config.root_exploration_fraction,
+                noises,
+                value_prefix_pool,
+                policy_logits_pool,
+            )
             # do MCTS for a new policy with the recent target model
-            MCTS(self.config).search(roots, self.model, hidden_state_roots, reward_hidden_roots)
+            MCTS(self.config).search(
+                roots, self.model, hidden_state_roots, reward_hidden_roots
+            )
 
             roots_distributions = roots.get_distributions()
             policy_index = 0
             for state_index, game_idx in zip(state_index_lst, indices):
                 target_policies = []
 
-                for current_index in range(state_index, state_index + self.config.num_unroll_steps + 1):
+                for current_index in range(
+                    state_index, state_index + self.config.num_unroll_steps + 1
+                ):
                     distributions = roots_distributions[policy_index]
 
                     if policy_mask[policy_index] == 0:
-                        target_policies.append([0 for _ in range(self.config.action_space_size)])
+                        target_policies.append(
+                            [0 for _ in range(self.config.action_space_size)]
+                        )
                     else:
                         # game.store_search_stats(distributions, value, current_index)
                         sum_visits = sum(distributions)
-                        policy = [visit_count / sum_visits for visit_count in distributions]
+                        policy = [
+                            visit_count / sum_visits for visit_count in distributions
+                        ]
                         target_policies.append(policy)
 
                     policy_index += 1
@@ -447,8 +602,7 @@ class BatchWorker_GPU(object):
         return batch_policies_re
 
     def _prepare_policy_non_re(self, policy_non_re_context):
-        """prepare policy targets from the non-reanalyzed context of policies
-        """
+        """prepare policy targets from the non-reanalyzed context of policies"""
         batch_policies_non_re = []
         if policy_non_re_context is None:
             return batch_policies_non_re
@@ -458,16 +612,22 @@ class BatchWorker_GPU(object):
             # for policy
             policy_mask = []  # 0 -> out of traj, 1 -> old policy
             # for game, state_index in zip(games, state_index_lst):
-            for traj_len, child_visit, state_index in zip(traj_lens, child_visits, state_index_lst):
+            for traj_len, child_visit, state_index in zip(
+                traj_lens, child_visits, state_index_lst
+            ):
                 # traj_len = len(game)
                 target_policies = []
 
-                for current_index in range(state_index, state_index + self.config.num_unroll_steps + 1):
+                for current_index in range(
+                    state_index, state_index + self.config.num_unroll_steps + 1
+                ):
                     if current_index < traj_len:
                         target_policies.append(child_visit[current_index])
                         policy_mask.append(1)
                     else:
-                        target_policies.append([0 for _ in range(self.config.action_space_size)])
+                        target_policies.append(
+                            [0 for _ in range(self.config.action_space_size)]
+                        )
                         policy_mask.append(0)
 
                 batch_policies_non_re.append(target_policies)
@@ -479,14 +639,22 @@ class BatchWorker_GPU(object):
         if input_countext is None:
             time.sleep(1)
         else:
-            reward_value_context, policy_re_context, policy_non_re_context, inputs_batch, target_weights = input_countext
+            (
+                reward_value_context,
+                policy_re_context,
+                policy_non_re_context,
+                inputs_batch,
+                target_weights,
+            ) = input_countext
             if target_weights is not None:
                 self.model.load_state_dict(target_weights)
                 self.model.to(self.config.device)
                 self.model.eval()
 
             # target reward, value
-            batch_value_prefixs, batch_values = self._prepare_reward_value(reward_value_context)
+            batch_value_prefixs, batch_values = self._prepare_reward_value(
+                reward_value_context
+            )
             # target policy
             batch_policies_re = self._prepare_policy_re(policy_re_context)
             batch_policies_non_re = self._prepare_policy_non_re(policy_non_re_context)

@@ -47,7 +47,7 @@ class TimeLimit(gym.Wrapper):
         self._elapsed_steps += 1
         if self._elapsed_steps >= self._max_episode_steps:
             done = True
-            info['TimeLimit.truncated'] = True
+            info["TimeLimit.truncated"] = True
         return observation, reward, done, info
 
     def get_max_episode_steps(self):
@@ -67,15 +67,17 @@ class NoopResetEnv(gym.Wrapper):
         self.noop_max = noop_max
         self.override_num_noops = None
         self.noop_action = 0
-        assert env.unwrapped.get_action_meanings()[0] == 'NOOP'
+        assert env.unwrapped.get_action_meanings()[0] == "NOOP"
 
     def reset(self, **kwargs):
-        """ Do no-op action for a number of steps in [1, noop_max]."""
+        """Do no-op action for a number of steps in [1, noop_max]."""
         self.env.reset(**kwargs)
         if self.override_num_noops is not None:
             noops = self.override_num_noops
         else:
-            noops = self.unwrapped.np_random.randint(1, self.noop_max + 1) #pylint: disable=E1101
+            noops = self.unwrapped.np_random.randint(
+                1, self.noop_max + 1
+            )  # pylint: disable=E1101
         assert noops > 0
         obs = None
         for _ in range(noops):
@@ -95,7 +97,7 @@ class EpisodicLifeEnv(gym.Wrapper):
         """
         gym.Wrapper.__init__(self, env)
         self.lives = 0
-        self.was_real_done  = True
+        self.was_real_done = True
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
@@ -130,8 +132,8 @@ class MaxAndSkipEnv(gym.Wrapper):
         """Return only every `skip`-th frame"""
         gym.Wrapper.__init__(self, env)
         # most recent raw observations (for max pooling across time steps)
-        self._obs_buffer = np.zeros((2,)+env.observation_space.shape, dtype=np.uint8)
-        self._skip       = skip
+        self._obs_buffer = np.zeros((2,) + env.observation_space.shape, dtype=np.uint8)
+        self._skip = skip
         self.max_frame = np.zeros(env.observation_space.shape, dtype=np.uint8)
 
     def step(self, action):
@@ -140,8 +142,10 @@ class MaxAndSkipEnv(gym.Wrapper):
         done = None
         for i in range(self._skip):
             obs, reward, done, info = self.env.step(action)
-            if i == self._skip - 2: self._obs_buffer[0] = obs
-            if i == self._skip - 1: self._obs_buffer[1] = obs
+            if i == self._skip - 2:
+                self._obs_buffer[0] = obs
+            if i == self._skip - 1:
+                self._obs_buffer[1] = obs
             total_reward += reward
             if done:
                 break
@@ -154,13 +158,14 @@ class MaxAndSkipEnv(gym.Wrapper):
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
 
-    def render(self, mode='human', **kwargs):
+    def render(self, mode="human", **kwargs):
         img = self.max_frame
         img = cv2.resize(img, (400, 400), interpolation=cv2.INTER_AREA).astype(np.uint8)
-        if mode == 'rgb_array':
+        if mode == "rgb_array":
             return img
-        elif mode == 'human':
+        elif mode == "human":
             from gym.envs.classic_control import rendering
+
             if self.viewer is None:
                 self.viewer = rendering.SimpleImageViewer()
             self.viewer.imshow(img)
@@ -232,7 +237,7 @@ def make_atari(env_id, skip=4, max_episode_steps=None):
         max moves for an episode
     """
     env = gym.make(env_id)
-    assert 'NoFrameskip' in env.spec.id
+    assert "NoFrameskip" in env.spec.id
     env = NoopResetEnv(env, noop_max=30)
     env = MaxAndSkipEnv(env, skip=skip)
     if max_episode_steps is not None:
@@ -252,29 +257,31 @@ def set_seed(seed):
 def make_results_dir(exp_path, args):
     # make the result directory
     os.makedirs(exp_path, exist_ok=True)
-    if args.opr == 'train' and os.path.exists(exp_path) and os.listdir(exp_path):
-        if not args.force:
-            raise FileExistsError('{} is not empty. Please use --force to overwrite it'.format(exp_path))
-        else:
-            print('Warning, path exists! Rewriting...')
-            shutil.rmtree(exp_path)
-            os.makedirs(exp_path)
-    log_path = os.path.join(exp_path, 'logs')
+    # if args.opr == 'train' and os.path.exists(exp_path) and os.listdir(exp_path):
+    #     if not args.force:
+    #         raise FileExistsError('{} is not empty. Please use --force to overwrite it'.format(exp_path))
+    #     else:
+    #         print('Warning, path exists! Rewriting...')
+    #         shutil.rmtree(exp_path)
+    #         os.makedirs(exp_path)
+    log_path = os.path.join(exp_path, "logs")
     os.makedirs(log_path, exist_ok=True)
-    os.makedirs(os.path.join(exp_path, 'model'), exist_ok=True)
+    os.makedirs(os.path.join(exp_path, "model"), exist_ok=True)
     return exp_path, log_path
 
 
 def init_logger(base_path):
     # initialize the logger
-    formatter = logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s][%(filename)s>%(funcName)s] ==> %(message)s')
-    for mode in ['train', 'test', 'train_test', 'root']:
-        file_path = os.path.join(base_path, mode + '.log')
+    formatter = logging.Formatter(
+        "[%(asctime)s][%(name)s][%(levelname)s][%(filename)s>%(funcName)s] ==> %(message)s"
+    )
+    for mode in ["train", "test", "train_test", "root"]:
+        file_path = os.path.join(base_path, mode + ".log")
         logger = logging.getLogger(mode)
         handler = logging.StreamHandler()
         handler.setFormatter(formatter)
         logger.addHandler(handler)
-        handler = logging.FileHandler(file_path, mode='a')
+        handler = logging.FileHandler(file_path, mode="a")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.setLevel(logging.DEBUG)
@@ -290,7 +297,9 @@ def select_action(visit_counts, temperature=1, deterministic=True):
         True -> select the argmax
         False -> sample from the distribution
     """
-    action_probs = [visit_count_i ** (1 / temperature) for visit_count_i in visit_counts]
+    action_probs = [
+        visit_count_i ** (1 / temperature) for visit_count_i in visit_counts
+    ]
     total_count = sum(action_probs)
     action_probs = [x / total_count for x in action_probs]
     if deterministic:
@@ -323,7 +332,7 @@ def arr_to_str(arr):
     """To reduce memory usage, we choose to store the jpeg strings of image instead of the numpy array in the buffer.
     This function encodes the observation numpy arr to the jpeg strings
     """
-    img_str = cv2.imencode('.jpg', arr)[1].tobytes()
+    img_str = cv2.imencode(".jpg", arr)[1].tobytes()
 
     return img_str
 

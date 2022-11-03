@@ -16,7 +16,7 @@ from core.utils import select_action, prepare_observation_lst
 @ray.remote(num_gpus=0.25)
 def _test(config, shared_storage):
     test_model = config.get_uniform_network()
-    best_test_score = float('-inf')
+    best_test_score = float("-inf")
     episodes = 0
     while True:
         counter = ray.get(shared_storage.get_counter.remote())
@@ -28,28 +28,50 @@ def _test(config, shared_storage):
             test_model.set_weights(ray.get(shared_storage.get_weights.remote()))
             test_model.eval()
 
-            test_score, eval_steps, _ = test(config, test_model, counter, config.test_episodes, config.device, False, save_video=False)
+            test_score, eval_steps, _ = test(
+                config,
+                test_model,
+                counter,
+                config.test_episodes,
+                config.device,
+                False,
+                save_video=False,
+            )
             mean_score = test_score.mean()
             std_score = test_score.std()
-            print('Start evaluation at step {}.'.format(counter))
+            print("Start evaluation at step {}.".format(counter))
             if mean_score >= best_test_score:
                 best_test_score = mean_score
                 torch.save(test_model.state_dict(), config.model_path)
 
             test_log = {
-                'mean_score': mean_score,
-                'std_score': std_score,
-                'max_score': test_score.max(),
-                'min_score': test_score.min(),
+                "mean_score": mean_score,
+                "std_score": std_score,
+                "max_score": test_score.max(),
+                "min_score": test_score.min(),
             }
 
             shared_storage.add_test_log.remote(counter, test_log)
-            print('Training step {}, test scores: \n{} of {} eval steps.'.format(counter, test_score, eval_steps))
+            print(
+                "Training step {}, test scores: \n{} of {} eval steps.".format(
+                    counter, test_score, eval_steps
+                )
+            )
 
         time.sleep(30)
 
 
-def test(config, model, counter, test_episodes, device, render, save_video=False, final_test=False, use_pb=False):
+def test(
+    config,
+    model,
+    counter,
+    test_episodes,
+    device,
+    render,
+    save_video=False,
+    final_test=False,
+    use_pb=False,
+):
     """evaluation test
     Parameters
     ----------
@@ -72,21 +94,38 @@ def test(config, model, counter, test_episodes, device, render, save_video=False
     """
     model.to(device)
     model.eval()
-    save_path = os.path.join(config.exp_path, 'recordings', 'step_{}'.format(counter))
+    save_path = os.path.join(config.exp_path, "recordings", "step_{}".format(counter))
 
     with torch.no_grad():
         # new games
-        envs = [config.new_game(seed=i, save_video=save_video, save_path=save_path, test=True, final_test=final_test,
-                              video_callable=lambda episode_id: True, uid=i) for i in range(test_episodes)]
+        envs = [
+            config.new_game(
+                seed=i,
+                save_video=save_video,
+                save_path=save_path,
+                test=True,
+                final_test=final_test,
+                video_callable=lambda episode_id: True,
+                uid=i,
+            )
+            for i in range(test_episodes)
+        ]
         max_episode_steps = envs[0].get_max_episode_steps()
         if use_pb:
             pb = tqdm(np.arange(max_episode_steps), leave=True)
         # initializations
         init_obses = [env.reset() for env in envs]
         dones = np.array([False for _ in range(test_episodes)])
-        game_histories = [GameHistory(envs[_].env.action_space, max_length=max_episode_steps, config=config) for _ in range(test_episodes)]
+        game_histories = [
+            GameHistory(
+                envs[_].env.action_space, max_length=max_episode_steps, config=config
+            )
+            for _ in range(test_episodes)
+        ]
         for i in range(test_episodes):
-            game_histories[i].init([init_obses[i] for _ in range(config.stacked_observations)])
+            game_histories[i].init(
+                [init_obses[i] for _ in range(config.stacked_observations)]
+            )
 
         step = 0
         ep_ori_rewards = np.zeros(test_episodes)
@@ -114,7 +153,9 @@ def test(config, model, counter, test_episodes, device, render, save_video=False
             value_prefix_pool = network_output.value_prefix
             policy_logits_pool = network_output.policy_logits.tolist()
 
-            roots = cytree.Roots(test_episodes, config.action_space_size, config.num_simulations)
+            roots = cytree.Roots(
+                test_episodes, config.action_space_size, config.num_simulations
+            )
             roots.prepare_no_noise(value_prefix_pool, policy_logits_pool)
             # do MCTS for a policy (argmax in testing)
             MCTS(config).search(roots, model, hidden_state_roots, reward_hidden_roots)
@@ -125,9 +166,15 @@ def test(config, model, counter, test_episodes, device, render, save_video=False
                 if dones[i]:
                     continue
 
-                distributions, value, env = roots_distributions[i], roots_values[i], envs[i]
+                distributions, value, env = (
+                    roots_distributions[i],
+                    roots_values[i],
+                    envs[i],
+                )
                 # select the argmax, not sampling
-                action, _ = select_action(distributions, temperature=1, deterministic=True)
+                action, _ = select_action(
+                    distributions, temperature=1, deterministic=True
+                )
 
                 obs, ori_reward, done, info = env.step(action)
                 if config.clip_reward:
@@ -144,9 +191,16 @@ def test(config, model, counter, test_episodes, device, render, save_video=False
 
             step += 1
             if use_pb:
-                pb.set_description('{} In step {}, scores: {}(max: {}, min: {}) currently.'
-                                   ''.format(config.env_name, counter,
-                                             ep_ori_rewards.mean(), ep_ori_rewards.max(), ep_ori_rewards.min()))
+                pb.set_description(
+                    "{} In step {}, scores: {}(max: {}, min: {}) currently."
+                    "".format(
+                        config.env_name,
+                        counter,
+                        ep_ori_rewards.mean(),
+                        ep_ori_rewards.max(),
+                        ep_ori_rewards.min(),
+                    )
+                )
                 pb.update(1)
 
         for env in envs:

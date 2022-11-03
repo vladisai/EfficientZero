@@ -6,16 +6,17 @@ from kornia.filters import GaussianBlur2d
 
 
 class Transforms(object):
-    """ Reference : Data-Efficient Reinforcement Learning with Self-Predictive Representations
+    """Reference : Data-Efficient Reinforcement Learning with Self-Predictive Representations
     Thanks to Repo: https://github.com/mila-iqia/spr.git
     """
+
     def __init__(self, augmentation, shift_delta=4, image_shape=(96, 96)):
         self.augmentation = augmentation
 
         self.transforms = []
         for aug in self.augmentation:
             if aug == "affine":
-                transformation = RandomAffine(5, (.14, .14), (.9, 1.1), (-5, 5))
+                transformation = RandomAffine(5, (0.14, 0.14), (0.9, 1.1), (-5, 5))
             elif aug == "crop":
                 transformation = RandomCrop(image_shape)
             elif aug == "rrc":
@@ -23,7 +24,9 @@ class Transforms(object):
             elif aug == "blur":
                 transformation = GaussianBlur2d((5, 5), (1.5, 1.5))
             elif aug == "shift":
-                transformation = nn.Sequential(nn.ReplicationPad2d(shift_delta), RandomCrop(image_shape))
+                transformation = nn.Sequential(
+                    nn.ReplicationPad2d(shift_delta), RandomCrop(image_shape)
+                )
             elif aug == "intensity":
                 transformation = Intensity(scale=0.05)
             elif aug == "none":
@@ -43,8 +46,9 @@ class Transforms(object):
         flat_images = images.reshape(-1, *images.shape[-3:])
         processed_images = self.apply_transforms(self.transforms, flat_images)
 
-        processed_images = processed_images.view(*images.shape[:-3],
-                                                 *processed_images.shape[1:])
+        processed_images = processed_images.view(
+            *images.shape[:-3], *processed_images.shape[1:]
+        )
         return processed_images
 
 

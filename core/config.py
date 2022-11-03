@@ -8,7 +8,7 @@ from core.game import Game
 
 
 class DiscreteSupport(object):
-    def __init__(self, min: int, max: int, delta=1.):
+    def __init__(self, min: int, max: int, delta=1.0):
         assert min < max
         self.min = min
         self.max = max
@@ -18,61 +18,62 @@ class DiscreteSupport(object):
 
 
 class BaseConfig(object):
-
-    def __init__(self,
-                 training_steps: int,
-                 last_steps: int,
-                 test_interval: int,
-                 test_episodes: int,
-                 checkpoint_interval: int,
-                 target_model_interval: int,
-                 save_ckpt_interval: int,
-                 log_interval: int,
-                 vis_interval: int,
-                 max_moves: int,
-                 test_max_moves: int,
-                 history_length: int,
-                 discount: float,
-                 dirichlet_alpha: float,
-                 value_delta_max: float,
-                 num_simulations: int,
-                 batch_size: int,
-                 td_steps: int,
-                 num_actors: int,
-                 lr_warm_up: float,
-                 lr_init: float,
-                 lr_decay_rate: float,
-                 lr_decay_steps: float,
-                 start_transitions: int,
-                 auto_td_steps_ratio: float = 0.3,
-                 total_transitions: int = 100 * 1000,
-                 transition_num: float = 25,
-                 do_consistency: bool = True,
-                 use_value_prefix: bool = True,
-                 off_correction: bool = True,
-                 gray_scale: bool = False,
-                 episode_life: bool = False,
-                 change_temperature: bool = True,
-                 init_zero: bool = False,
-                 state_norm: bool = False,
-                 clip_reward: bool = False,
-                 random_start: bool = True,
-                 cvt_string: bool = False,
-                 image_based: bool = False,
-                 frame_skip: int = 1,
-                 stacked_observations: int = 16,
-                 lstm_hidden_size: int = 64,
-                 lstm_horizon_len: int = 1,
-                 reward_loss_coeff: float = 1,
-                 value_loss_coeff: float = 1,
-                 policy_loss_coeff: float = 1,
-                 consistency_coeff: float = 1,
-                 proj_hid: int = 256,
-                 proj_out: int = 256,
-                 pred_hid: int = 64,
-                 pred_out: int = 256,
-                 value_support: DiscreteSupport = DiscreteSupport(-300, 300, delta=1),
-                 reward_support: DiscreteSupport = DiscreteSupport(-300, 300, delta=1)):
+    def __init__(
+        self,
+        training_steps: int,
+        last_steps: int,
+        test_interval: int,
+        test_episodes: int,
+        checkpoint_interval: int,
+        target_model_interval: int,
+        save_ckpt_interval: int,
+        log_interval: int,
+        vis_interval: int,
+        max_moves: int,
+        test_max_moves: int,
+        history_length: int,
+        discount: float,
+        dirichlet_alpha: float,
+        value_delta_max: float,
+        num_simulations: int,
+        batch_size: int,
+        td_steps: int,
+        num_actors: int,
+        lr_warm_up: float,
+        lr_init: float,
+        lr_decay_rate: float,
+        lr_decay_steps: float,
+        start_transitions: int,
+        auto_td_steps_ratio: float = 0.3,
+        total_transitions: int = 100 * 1000,
+        transition_num: float = 25,
+        do_consistency: bool = True,
+        use_value_prefix: bool = True,
+        off_correction: bool = True,
+        gray_scale: bool = False,
+        episode_life: bool = False,
+        change_temperature: bool = True,
+        init_zero: bool = False,
+        state_norm: bool = False,
+        clip_reward: bool = False,
+        random_start: bool = True,
+        cvt_string: bool = False,
+        image_based: bool = False,
+        frame_skip: int = 1,
+        stacked_observations: int = 16,
+        lstm_hidden_size: int = 64,
+        lstm_horizon_len: int = 1,
+        reward_loss_coeff: float = 1,
+        value_loss_coeff: float = 1,
+        policy_loss_coeff: float = 1,
+        consistency_coeff: float = 1,
+        proj_hid: int = 256,
+        proj_out: int = 256,
+        pred_hid: int = 64,
+        pred_out: int = 256,
+        value_support: DiscreteSupport = DiscreteSupport(-300, 300, delta=1),
+        reward_support: DiscreteSupport = DiscreteSupport(-300, 300, delta=1),
+    ):
         """Base Config for EfficietnZero
         Parameters
         ----------
@@ -251,7 +252,7 @@ class BaseConfig(object):
         self.value_loss_coeff = value_loss_coeff
         self.policy_loss_coeff = policy_loss_coeff
         self.consistency_coeff = consistency_coeff
-        self.device = 'cuda'
+        self.device = "cuda"
         self.exp_path = None  # experiment path
         self.debug = False
         self.model_path = None
@@ -290,8 +291,16 @@ class BaseConfig(object):
     def set_game(self, env_name):
         raise NotImplementedError
 
-    def new_game(self, seed=None, save_video=False, save_path=None, video_callable=None, uid=None, test=False) -> Game:
-        """ returns a new instance of the game"""
+    def new_game(
+        self,
+        seed=None,
+        save_video=False,
+        save_path=None,
+        video_callable=None,
+        uid=None,
+        test=False,
+    ) -> Game:
+        """returns a new instance of the game"""
         raise NotImplementedError
 
     def get_uniform_network(self):
@@ -301,7 +310,7 @@ class BaseConfig(object):
         raise NotImplementedError
 
     def scalar_transform(self, x):
-        """ Reference from MuZerp: Appendix F => Network Architecture
+        """Reference from MuZerp: Appendix F => Network Architecture
         & Appendix A : Proposition A.2 in https://arxiv.org/pdf/1805.11593.pdf (Page-11)
         """
         delta = self.value_support.delta
@@ -319,32 +328,44 @@ class BaseConfig(object):
         return self.inverse_scalar_transform(value_logits, self.value_support)
 
     def inverse_scalar_transform(self, logits, scalar_support):
-        """ Reference from MuZerp: Appendix F => Network Architecture
+        """Reference from MuZerp: Appendix F => Network Architecture
         & Appendix A : Proposition A.2 in https://arxiv.org/pdf/1805.11593.pdf (Page-11)
         """
         delta = self.value_support.delta
         value_probs = torch.softmax(logits, dim=1)
         value_support = torch.ones(value_probs.shape)
-        value_support[:, :] = torch.from_numpy(np.array([x for x in scalar_support.range]))
+        value_support[:, :] = torch.from_numpy(
+            np.array([x for x in scalar_support.range])
+        )
         value_support = value_support.to(device=value_probs.device)
         value = (value_support * value_probs).sum(1, keepdim=True) / delta
 
         epsilon = 0.001
         sign = torch.ones(value.shape).float().to(value.device)
         sign[value < 0] = -1.0
-        output = (((torch.sqrt(1 + 4 * epsilon * (torch.abs(value) + 1 + epsilon)) - 1) / (2 * epsilon)) ** 2 - 1)
+        output = (
+            (torch.sqrt(1 + 4 * epsilon * (torch.abs(value) + 1 + epsilon)) - 1)
+            / (2 * epsilon)
+        ) ** 2 - 1
         output = sign * output * delta
 
         nan_part = torch.isnan(output)
-        output[nan_part] = 0.
-        output[torch.abs(output) < epsilon] = 0.
+        output[nan_part] = 0.0
+        output[torch.abs(output) < epsilon] = 0.0
         return output
 
     def value_phi(self, x):
-        return self._phi(x, self.value_support.min, self.value_support.max, self.value_support.size)
+        return self._phi(
+            x, self.value_support.min, self.value_support.max, self.value_support.size
+        )
 
     def reward_phi(self, x):
-        return self._phi(x, self.reward_support.min, self.reward_support.max, self.reward_support.size)
+        return self._phi(
+            x,
+            self.reward_support.min,
+            self.reward_support.max,
+            self.reward_support.size,
+        )
 
     def _phi(self, x, min, max, set_size: int):
         delta = self.value_support.delta
@@ -365,7 +386,7 @@ class BaseConfig(object):
         # get all the hyper-parameters
         hparams = {}
         for k, v in self.__dict__.items():
-            if 'path' not in k and (v is not None):
+            if "path" not in k and (v is not None):
                 hparams[k] = v
         return hparams
 
@@ -413,10 +434,11 @@ class BaseConfig(object):
         if args.revisit_policy_search_rate is not None:
             self.revisit_policy_search_rate = args.revisit_policy_search_rate
 
-        localtime = time.asctime(time.localtime(time.time()))
-        seed_tag = 'seed={}'.format(self.seed)
-        self.exp_path = os.path.join(args.result_dir, args.case, args.info, args.env, seed_tag, localtime)
+        seed_tag = "seed={}".format(self.seed)
+        self.exp_path = os.path.join(
+            args.result_dir, args.case, args.info, args.env, seed_tag
+        )
 
-        self.model_path = os.path.join(self.exp_path, 'model.p')
-        self.model_dir = os.path.join(self.exp_path, 'model')
+        self.model_path = os.path.join(self.exp_path, "model.p")
+        self.model_dir = os.path.join(self.exp_path, "model")
         return self.exp_path
