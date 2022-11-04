@@ -43,8 +43,8 @@ class ReplayBuffer(object):
         self.transition_top = int(config.transition_num * 10**6)
         self.clear_time = 0
 
-    def lave_pools(self, pools, gap_step):
-        # ve a list of game histories
+    def save_pools(self, pools, gap_step):
+        # save a list of game histories
         for (game, priorities) in pools:
             # Only append end game
             # if end_tag:

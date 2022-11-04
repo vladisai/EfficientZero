@@ -139,7 +139,8 @@ class DataWorker(object):
         # 100k benchmark
         # max transition to collect for this data worker
         max_transitions = self.config.total_transitions // self.config.num_actors
-        total_transitions = self.start_transitions // self.config.num_actors
+        # total_transitions = self.start_transitions // self.config.num_actors
+        total_transitions = 0
         with torch.no_grad():
             while True:
                 trained_steps = ray.get(self.storage.get_counter.remote())
