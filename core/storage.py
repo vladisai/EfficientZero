@@ -32,7 +32,7 @@ class QueueStorage(object):
 
 @ray.remote
 class SharedStorage(object):
-    def __init__(self, model, target_model):
+    def __init__(self, model, target_model, init_counter=0):
         """Shared storage for models and others
         Parameters
         ----------
@@ -41,7 +41,7 @@ class SharedStorage(object):
         target_model: any
             models for reanalyzing (update every target_model_interval)
         """
-        self.step_counter = 0
+        self.step_counter = init_counter
         self.test_counter = 0
         self.model = model
         self.target_model = target_model

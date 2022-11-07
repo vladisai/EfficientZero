@@ -562,16 +562,15 @@ def _train(
 
         step_count += 1
 
-        # save models
         if step_count % config.save_ckpt_interval == 0:
             print("saving")
+            with open(os.path.join(config.exp_path, "train_state.yaml"), "w") as f:
+                yaml.dump({"step_count": step_count}, f)
             model_path = os.path.join(config.model_dir, "model_{}.p".format(step_count))
             torch.save(model.state_dict(), model_path)
             resume_model_path = os.path.join(config.exp_path, "model_resume.p")
             torch.save(model.state_dict(), resume_model_path)
             ray.get(replay_buffer.save_to_file.remote())
-            with open(os.path.join(config.exp_path, "train_state.yaml"), "w") as f:
-                yaml.dump({"step_count": step_count}, f)
 
     shared_storage.set_weights.remote(model.get_weights())
     time.sleep(30)
@@ -601,7 +600,7 @@ def train(config, summary_writer, model_path=None, buffer_path=None):
         if train_state is not None:
             start_step_count = train_state["step_count"]
 
-    storage = SharedStorage.remote(model, target_model)
+    storage = SharedStorage.remote(model, target_model, start_step_count)
 
     # prepare the batch and mctc context storage
     batch_storage = QueueStorage(15, 20)

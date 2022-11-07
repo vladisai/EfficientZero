@@ -139,8 +139,7 @@ class DataWorker(object):
         # 100k benchmark
         # max transition to collect for this data worker
         max_transitions = self.config.total_transitions // self.config.num_actors
-        # total_transitions = self.start_transitions // self.config.num_actors
-        total_transitions = 0
+        total_transitions = self.start_transitions // self.config.num_actors
         with torch.no_grad():
             while True:
                 trained_steps = ray.get(self.storage.get_counter.remote())
@@ -306,7 +305,7 @@ class DataWorker(object):
                             envs[i].close()
                             init_obs = envs[i].reset()
                             game_histories[i] = GameHistory(
-                                env.env.action_space,
+                                envs[i].env.action_space,
                                 max_length=self.config.history_length,
                                 config=self.config,
                             )
