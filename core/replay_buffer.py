@@ -19,7 +19,7 @@ class SavedState(NamedTuple):
     clear_time: int
 
 
-# @ray.remote
+@ray.remote
 class ReplayBuffer(object):
     """Reference : DISTRIBUTED PRIORITIZED EXPERIENCE REPLAY
     Algo. 1 and Algo. 2 in Page-3 of (https://arxiv.org/pdf/1803.00933.pdf
