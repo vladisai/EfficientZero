@@ -497,7 +497,6 @@ def _train(
 
     # wait until collecting enough data to start
     while not (ray.get(replay_buffer.get_total_len.remote()) >= config.start_transitions):
-        print("len is 0")
         time.sleep(1)
         pass
     print("Begin training...")
