@@ -25,7 +25,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--case",
         required=True,
-        choices=["atari"],
+        choices=["atari", "crafter"],
         help="It's used for switching between different domains(default: %(default)s)",
     )
     parser.add_argument("--opr", required=True, choices=["train", "test"])
@@ -152,6 +152,8 @@ if __name__ == "__main__":
     # import corresponding configuration , neural networks and envs
     if args.case == "atari":
         from config.atari import game_config
+    elif args.case == "crafter":
+        from config.crafter import game_config
     else:
         raise Exception("Invalid --case option")
 

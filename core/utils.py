@@ -7,6 +7,7 @@ import shutil
 import logging
 
 import numpy as np
+import crafter
 
 from scipy.stats import entropy
 
@@ -240,6 +241,13 @@ def make_atari(env_id, skip=4, max_episode_steps=None):
     assert "NoFrameskip" in env.spec.id
     env = NoopResetEnv(env, noop_max=30)
     env = MaxAndSkipEnv(env, skip=skip)
+    if max_episode_steps is not None:
+        env = TimeLimit(env, max_episode_steps=max_episode_steps)
+    return env
+
+
+def make_crafter(max_episode_steps=None):
+    env = gym.make('CrafterReward-v1')  # Or CrafterNoReward-v1
     if max_episode_steps is not None:
         env = TimeLimit(env, max_episode_steps=max_episode_steps)
     return env
