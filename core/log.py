@@ -1,5 +1,6 @@
 import ray
 import logging
+import yaml
 
 import numpy as np
 
@@ -78,6 +79,7 @@ def _log(
         visit_entropy,
         priority_self_play,
         distributions,
+        achievements_stats,
     ) = worker_logs
 
     _msg = (
@@ -101,6 +103,8 @@ def _log(
         lr,
     )
     train_logger.info(_msg)
+    if len(achievements_stats) > 0:
+        train_logger.info(yaml.dump(achievements_stats))
 
     if test_dict is not None:
         mean_score = np.mean(test_dict["mean_score"])
@@ -119,6 +123,11 @@ def _log(
             )
         )
         test_logger.info(test_msg)
+        for k, v in test_dict.items():
+            if not k.endswith(
+                "score"
+            ):  # these are per tasks cores in crafter, if they're present
+                test_logger.info("{}: {}".format(k, v))
 
     if summary_writer is not None:
         if config.debug:
@@ -313,8 +322,10 @@ def _log(
                 val = np.array(val).flatten()
                 summary_writer.add_histogram("workers/{}".format(key), val, step_count)
 
+            for key, val in achievements_stats.items():
+                summary_writer.add_scalar(f"workers/{key}", val, step_count)
+
         if test_dict is not None:
-            for key, val in test_dict.items():
-                summary_writer.add_scalar(
-                    "train/{}".format(key), np.mean(val), test_counter
-                )
+            summary_writer.add_scalar(
+                "train/{}".format(key), np.mean(val), test_counter
+            )

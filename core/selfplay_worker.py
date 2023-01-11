@@ -1,6 +1,7 @@
 import ray
 import time
 import torch
+import traceback
 
 import numpy as np
 import core.ctree.cytree as cytree
@@ -10,6 +11,7 @@ from torch.cuda.amp import autocast as autocast
 from core.mcts import MCTS
 from core.game import GameHistory
 from core.utils import select_action, prepare_observation_lst
+from config.crafter import CRAFTER_ACHIEVEMENTS
 
 
 @ray.remote(num_gpus=0.125)
@@ -37,6 +39,10 @@ class DataWorker(object):
         self.last_model_index = -1
         # transitions that were there when worker started (non-zero if the job is resumed)
         self.start_transitions = start_transitions
+
+        if config.case == "crafter":
+            self.n_finished_episodes = 0
+            self.achievements = {k: 0 for k in CRAFTER_ACHIEVEMENTS}
 
     def put(self, data):
         # put a game history into the pool
@@ -118,6 +124,14 @@ class DataWorker(object):
         return priorities
 
     def run(self):
+        try:
+            self.run_wrapper()
+        except Exception as e:
+            print("Exception in worker: ", e)
+            traceback.print_exc()
+            raise e
+
+    def run_wrapper(self):
         # number of parallel mcts
         env_nums = self.config.p_mcts_num
         model = self.config.get_uniform_network()
@@ -275,14 +289,15 @@ class DataWorker(object):
                                 visit_entropies,
                                 0,
                                 other_dist,
+                                self.build_stats_dict(),
                             )
                             self_play_rewards_max = -np.inf
 
                     step_counter += 1
                     for i in range(env_nums):
+                        # prepare finished envs
                         # reset env if finished
                         if dones[i]:
-
                             # pad over last block trajectory
                             if last_game_histories[i] is not None:
                                 self.put_last_trajectory(
@@ -302,6 +317,8 @@ class DataWorker(object):
                             self.free()
 
                             # reset the finished env and new a env
+
+                            self.update_achievements_stats(envs[i])
                             envs[i].close()
                             init_obs = envs[i].reset()
                             game_histories[i] = GameHistory(
@@ -394,7 +411,7 @@ class DataWorker(object):
 
                     roots_distributions = roots.get_distributions()
                     roots_values = roots.get_values()
-                    for i in range(env_nums):
+                    for i in range(env_nums):  # actual MCTS search and env step
                         deterministic = False
                         if start_training:
                             distributions, value, temperature, env = (
@@ -477,9 +494,10 @@ class DataWorker(object):
                             )
                             game_histories[i].init(stack_obs_windows[i])
 
+                # End loop with step inside it.
+
                 for i in range(env_nums):
                     env = envs[i]
-                    env.close()
 
                     if dones[i]:
                         # pad over last block trajectory
@@ -497,6 +515,8 @@ class DataWorker(object):
                         )
                         game_histories[i].game_over()
 
+                        # update achievements
+                        self.update_achievements_stats(env)
                         self.put((game_histories[i], priorities))
                         self.free()
 
@@ -514,6 +534,8 @@ class DataWorker(object):
                     else:
                         # if the final game history is not finished, we will not save this data.
                         total_transitions -= len(game_histories[i])
+
+                    env.close()
 
                 # logs
                 visit_entropies = np.array(self_play_visit_entropy).mean()
@@ -542,4 +564,28 @@ class DataWorker(object):
                     visit_entropies,
                     0,
                     other_dist,
+                    self.build_stats_dict(),
                 )
+
+    def update_achievements_stats(self, env):
+        if self.config.case != "crafter":
+            return
+        self.n_finished_episodes += 1
+        while not hasattr(env, "_unlocked"):
+            env = env.env  # unwrap this env from TimeLimit, Obs, etc.
+
+        episode_achievements = env._unlocked
+        for k in episode_achievements:
+            self.achievements[k] += 1
+
+    def build_stats_dict(self):
+        if self.config.case != "crafter":
+            return {}
+        result = {}
+        success_rates = []
+        for k in self.achievements:
+            sr = self.achievements[k] / (self.n_finished_episodes + 1e-6)
+            result[k] = sr
+        geometric_mean = float(np.exp(np.mean(np.log(success_rates))))
+        result["score"] = geometric_mean
+        return result

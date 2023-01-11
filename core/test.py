@@ -28,7 +28,7 @@ def _test(config, shared_storage):
             test_model.set_weights(ray.get(shared_storage.get_weights.remote()))
             test_model.eval()
 
-            test_score, eval_steps, _ = test(
+            test_score, eval_steps, additional_info, _ = test(
                 config,
                 test_model,
                 counter,
@@ -50,6 +50,8 @@ def _test(config, shared_storage):
                 "max_score": test_score.max(),
                 "min_score": test_score.min(),
             }
+            if additional_info is not None:
+                test_log.update(additional_info)
 
             shared_storage.add_test_log.remote(counter, test_log)
             print(
@@ -203,7 +205,20 @@ def test(
                 )
                 pb.update(1)
 
+        additional_info = {}
+        if config.case == "crafter":  # we want to note down achievements
+            for env in envs:
+                if env.get_achievements() is not None:
+                    for k, v in env.get_achievements().items():
+                        if k not in additional_info:
+                            additional_info[k] = 0
+                        if v > 0:
+                            additional_info[k] += 1
+
+            for k in additional_info.keys():
+                additional_info[k] /= test_episodes  # calcuate success rates
+
         for env in envs:
             env.close()
 
-    return ep_ori_rewards, step, save_path
+    return ep_ori_rewards, step, additional_info, save_path

@@ -247,7 +247,7 @@ def make_atari(env_id, skip=4, max_episode_steps=None):
 
 
 def make_crafter(max_episode_steps=None):
-    env = gym.make('CrafterReward-v1')  # Or CrafterNoReward-v1
+    env = gym.make("CrafterReward-v1")  # Or CrafterNoReward-v1
     if max_episode_steps is not None:
         env = TimeLimit(env, max_episode_steps=max_episode_steps)
     return env

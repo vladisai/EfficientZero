@@ -1,6 +1,7 @@
 import argparse
 import logging.config
 import os
+import yaml
 
 import numpy as np
 import ray
@@ -128,6 +129,15 @@ if __name__ == "__main__":
         default=150 * 1024 * 1024 * 1024,
         help="object store memory",
     )
+    parser.add_argument(
+        "--target_goal", type=str, default=None, help="target goal for crafter"
+    )
+    parser.add_argument(
+        "--training_steps", type=int, default=100000, help="training steps"
+    )
+    parser.add_argument(
+        "--total_transitions", type=int, default=100000, help="training steps"
+    )
 
     # Process arguments
     args = parser.parse_args()
@@ -154,6 +164,10 @@ if __name__ == "__main__":
         from config.atari import game_config
     elif args.case == "crafter":
         from config.crafter import game_config
+
+        game_config.target_goal = args.target_goal
+        game_config.set_steps(args.training_steps)
+        game_config.total_transitions = args.total_transitions
     else:
         raise Exception("Invalid --case option")
 
@@ -188,7 +202,7 @@ if __name__ == "__main__":
             model, weights = train(game_config, summary_writer, model_path, buffer_path)
             model.set_weights(weights)
             total_steps = game_config.training_steps + game_config.last_steps
-            test_score, _, test_path = test(
+            test_score, _, additional_info, test_path = test(
                 game_config,
                 model.to(device),
                 total_steps,
@@ -206,6 +220,7 @@ if __name__ == "__main__":
                 "mean_score": mean_score,
                 "std_score": std_score,
             }
+            test_log.update(additional_info)
             for key, val in test_log.items():
                 summary_writer.add_scalar(
                     "train/{}".format(key), np.mean(val), total_steps
@@ -223,6 +238,9 @@ if __name__ == "__main__":
                 )
             )
             logging.getLogger("train_test").info(test_msg)
+            for key, val in additional_info.items():
+                logging.getLogger("train_test").info(f"{key}: {val}")
+
             if args.save_video:
                 logging.getLogger("train_test").info(
                     "Saving video in path: {}".format(test_path)
@@ -241,7 +259,7 @@ if __name__ == "__main__":
             model.load_state_dict(
                 torch.load(model_path, map_location=torch.device(device))
             )
-            test_score, _, test_path = test(
+            test_score, _, additional_info, test_path = test(
                 game_config,
                 model,
                 0,
@@ -264,6 +282,8 @@ if __name__ == "__main__":
                 logging.getLogger("test").info(
                     "Saving video in path: {}".format(test_path)
                 )
+            if additional_info is not None:
+                logging.getLogger("test").info(yaml.dump(additional_info))
         else:
             raise Exception("Please select a valid operation(--opr) to be performed")
         ray.shutdown()

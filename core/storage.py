@@ -55,6 +55,7 @@ class SharedStorage(object):
         self.visit_entropies_log = []
         self.priority_self_play_log = []
         self.distributions_log = {}
+        self.achievement_stats = {}
         self.start = False
 
     def set_start_signal(self):
@@ -92,6 +93,7 @@ class SharedStorage(object):
         visit_entropy,
         priority_self_play,
         distributions,
+        achievement_stats,
     ):
         self.eps_lengths.append(eps_len)
         self.eps_lengths_max.append(eps_len_max)
@@ -107,12 +109,17 @@ class SharedStorage(object):
                 self.distributions_log[key] = []
             self.distributions_log[key] += val
 
+        self.achievement_stats = achievement_stats
+
     def add_test_log(self, test_counter, test_dict):
-        self.test_counter = test_counter
-        for key, val in test_dict.items():
-            if key not in self.test_dict_log.keys():
-                self.test_dict_log[key] = []
-            self.test_dict_log[key].append(val)
+        try:
+            self.test_counter = test_counter
+            for key, val in test_dict.items():
+                if key not in self.test_dict_log.keys():
+                    self.test_dict_log[key] = []
+                self.test_dict_log[key].append(val)
+        except Exception as e:
+            print(e)
 
     def get_worker_logs(self):
         if len(self.reward_log) > 0:
@@ -129,6 +136,7 @@ class SharedStorage(object):
                 self.priority_self_play_log
             )
             distributions = self.distributions_log
+            achievement_stats = self.achievement_stats
 
             self.ori_reward_log = []
             self.reward_log = []
@@ -150,6 +158,7 @@ class SharedStorage(object):
             visit_entropy = None
             priority_self_play = None
             distributions = None
+            achievement_stats = {}
 
         if len(self.test_dict_log) > 0:
             test_dict = self.test_dict_log
@@ -172,4 +181,5 @@ class SharedStorage(object):
             visit_entropy,
             priority_self_play,
             distributions,
+            achievement_stats,
         )
