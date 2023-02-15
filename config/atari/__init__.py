@@ -67,7 +67,7 @@ class AtariConfig(BaseConfig):
         self.max_moves //= self.frame_skip
         self.test_max_moves //= self.frame_skip
 
-        self.start_transitions = self.start_transitions * 1000 // self.frame_skip
+        self.start_transitions = int(self.start_transitions * 1000) // self.frame_skip
         self.start_transitions = max(1, self.start_transitions)
 
         self.bn_mt = 0.1

@@ -73,6 +73,11 @@ class BaseConfig(object):
         pred_out: int = 256,
         value_support: DiscreteSupport = DiscreteSupport(-300, 300, delta=1),
         reward_support: DiscreteSupport = DiscreteSupport(-300, 300, delta=1),
+        vc_std_coeff: float = 25.0,
+        vc_cov_coeff: float = 1.0,
+        vc_std_t_coeff: float = 1.0,
+        vc_cov_t_coeff: float = 1.0,
+        vc_sim_coeff: float = 25.0,
     ):
         """Base Config for EfficietnZero
         Parameters
@@ -285,6 +290,15 @@ class BaseConfig(object):
         self.pred_hid = pred_hid
         self.pred_out = pred_out
 
+        #vicreg
+        self.vc_std_coeff = vc_std_coeff
+        self.vc_cov_coeff = vc_cov_coeff
+        self.vc_std_t_coeff = vc_std_t_coeff
+        self.vc_cov_t_coeff = vc_cov_t_coeff
+        self.vc_sim_coeff = vc_sim_coeff
+
+
+
     def visit_softmax_temperature_fn(self, num_moves, trained_steps):
         raise NotImplementedError
 
@@ -441,4 +455,13 @@ class BaseConfig(object):
 
         self.model_path = os.path.join(self.exp_path, "model.p")
         self.model_dir = os.path.join(self.exp_path, "model")
+
+        #vicreg
+        self.vc_std_coeff = args.vc_std_coeff
+        self.vc_cov_coeff = args.vc_cov_coeff
+        self.vc_std_t_coeff = args.vc_std_t_coeff
+        self.vc_cov_t_coeff = args.vc_cov_t_coeff
+        self.vc_sim_coeff = args.vc_sim_coeff
+        self.lr_init = args.lr_init
+
         return self.exp_path

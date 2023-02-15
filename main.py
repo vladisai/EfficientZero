@@ -139,6 +139,25 @@ if __name__ == "__main__":
         "--total_transitions", type=int, default=100000, help="training steps"
     )
 
+    parser.add_argument(
+        "--vc_std_t_coeff", type=float, default=1
+    )
+    parser.add_argument(
+        "--vc_cov_t_coeff", type=float, default=1
+    )
+    parser.add_argument(
+        "--vc_std_coeff", type=float, default=1
+    )
+    parser.add_argument(
+        "--vc_cov_coeff", type=float, default=1
+    )
+    parser.add_argument(
+        "--vc_sim_coeff", type=float, default=1
+    )
+    parser.add_argument(
+        "--lr_init", type=float, default=0.2
+    )
+
     # Process arguments
     args = parser.parse_args()
     args.device = "cuda" if (not args.no_cuda) and torch.cuda.is_available() else "cpu"

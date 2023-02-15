@@ -17,6 +17,7 @@ from core.replay_buffer import ReplayBuffer
 from core.storage import SharedStorage, QueueStorage
 from core.selfplay_worker import DataWorker
 from core.reanalyze_worker import BatchWorker_GPU, BatchWorker_CPU
+from core.vicreg import VICRegObjective, VICRegObjectiveConfig
 
 
 def load_train_state(exp_path):
@@ -171,6 +172,15 @@ def update_weights(
     )
     value_prefix_loss = torch.zeros(batch_size, device=config.device)
     consistency_loss = torch.zeros(batch_size, device=config.device)
+    vicreg_objective = VICRegObjective(
+        VICRegObjectiveConfig(
+            sim_coeff=config.vc_sim_coeff,
+            std_coeff=config.vc_std_coeff,
+            cov_coeff=config.vc_cov_coeff,
+            std_coeff_t=config.vc_std_t_coeff,
+            cov_coeff_t=config.vc_cov_t_coeff,
+        )
+    )
 
     target_value_prefix_cpu = target_value_prefix.detach().cpu()
     gradient_scale = 1 / config.num_unroll_steps
@@ -178,6 +188,8 @@ def update_weights(
     if config.amp_type == "torch_amp":
         # use torch amp
         with autocast():
+            all_encs = []
+            all_preds = []
             for step_i in range(config.num_unroll_steps):
                 # unroll with the dynamics function
                 (
@@ -203,16 +215,16 @@ def update_weights(
                     )
                     # no grad for the presentation_state branch
                     dynamic_proj = model.project(hidden_state, with_grad=True)
-                    observation_proj = model.project(
-                        presentation_state, with_grad=False
-                    )
-                    temp_loss = (
-                        consist_loss_func(dynamic_proj, observation_proj)
-                        * mask_batch[:, step_i]
-                    )
+                    observation_proj = model.project(presentation_state, with_grad=True)
+                    all_preds.append(dynamic_proj)
+                    all_encs.append(observation_proj)
+                    # temp_loss = (
+                    #     consist_loss_func(dynamic_proj, observation_proj)
+                    #     * mask_batch[:, step_i]
+                    # )
 
-                    other_loss["consist_" + str(step_i + 1)] = temp_loss.mean().item()
-                    consistency_loss += temp_loss
+                    # other_loss["consist_" + str(step_i + 1)] = temp_loss.mean().item()
+                    # consistency_loss += temp_loss
 
                 policy_loss += (
                     -(
@@ -302,6 +314,12 @@ def update_weights(
                             scaled_value_prefixs_cpu[value_prefix_indices_0],
                             target_value_prefix_base[value_prefix_indices_0],
                         )
+            all_preds_t = torch.stack(all_preds)
+            all_encs_t = torch.stack(all_encs)
+            vc_loss = vicreg_objective(all_encs_t, all_preds_t)
+            other_loss.update(vc_loss.build_log_dict())
+            print(vc_loss.build_log_dict())
+            consistency_loss = vc_loss.total_loss
     else:
         for step_i in range(config.num_unroll_steps):
             # unroll with the dynamics function
