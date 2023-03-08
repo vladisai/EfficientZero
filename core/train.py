@@ -190,6 +190,7 @@ def update_weights(
         with autocast():
             all_encs = []
             all_preds = []
+            prev_obs_proj = None
             for step_i in range(config.num_unroll_steps):
                 # unroll with the dynamics function
                 (
@@ -215,9 +216,14 @@ def update_weights(
                     )
                     # no grad for the presentation_state branch
                     dynamic_proj = model.project(hidden_state, with_grad=True)
-                    observation_proj = model.project(presentation_state, with_grad=True)
+                    observation_proj = model.project(
+                        presentation_state, with_grad=True
+                    )
+                    # loss += vicreg(dynamic_proj, observation_proj)
+                    # dynamic proj and obs proj are 256x1024
                     all_preds.append(dynamic_proj)
                     all_encs.append(observation_proj)
+
                     # temp_loss = (
                     #     consist_loss_func(dynamic_proj, observation_proj)
                     #     * mask_batch[:, step_i]
@@ -314,11 +320,12 @@ def update_weights(
                             scaled_value_prefixs_cpu[value_prefix_indices_0],
                             target_value_prefix_base[value_prefix_indices_0],
                         )
+            # calculate the total length of each sequence in the batch
             all_preds_t = torch.stack(all_preds)
             all_encs_t = torch.stack(all_encs)
-            vc_loss = vicreg_objective(all_encs_t, all_preds_t)
+
+            vc_loss = vicreg_objective(all_encs_t, all_preds_t, mask_batch.permute(1, 0))
             other_loss.update(vc_loss.build_log_dict())
-            print(vc_loss.build_log_dict())
             consistency_loss = vc_loss.total_loss
     else:
         for step_i in range(config.num_unroll_steps):
@@ -726,7 +733,7 @@ def train(config, summary_writer, model_path=None, buffer_path=None):
     model = config.get_uniform_network()
     target_model = config.get_uniform_network()
     start_step_count = 0
-    if model_path:
+    if model_path and os.path.exists(model_path):
         print("resume model from path: ", model_path)
         weights = torch.load(model_path)
 
@@ -743,7 +750,7 @@ def train(config, summary_writer, model_path=None, buffer_path=None):
     mcts_storage = QueueStorage(18, 25)
     replay_buffer = ReplayBuffer.remote(config=config)
 
-    if buffer_path:
+    if buffer_path and os.path.exists(buffer_path):
         ray.get(replay_buffer.load_from_file.remote())
         print("loaded buffer from: ", buffer_path)
 
