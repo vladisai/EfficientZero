@@ -3,6 +3,7 @@ import ray
 import time
 import torch
 import yaml
+import contextlib
 
 import numpy as np
 import torch.optim as optim
@@ -13,6 +14,7 @@ from torch.cuda.amp import autocast as autocast
 from torch.cuda.amp import GradScaler as GradScaler
 from core.log import _log
 from core.test import _test
+from core.model import BaseNet
 from core.replay_buffer import ReplayBuffer
 from core.storage import SharedStorage, QueueStorage
 from core.selfplay_worker import DataWorker
@@ -51,7 +53,7 @@ def adjust_lr(config, optimizer, step_count):
 
 
 def update_weights(
-    model, batch, optimizer, replay_buffer, config, scaler, vis_result=False
+    model: BaseNet, batch, optimizer, replay_buffer, config, scaler, vis_result=False
 ):
     """update models given a batch data
     Parameters
@@ -132,19 +134,17 @@ def update_weights(
     transformed_target_value = config.scalar_transform(target_value)
     target_value_phi = config.value_phi(transformed_target_value)
 
-    if config.amp_type == "torch_amp":
-        with autocast():
-            (
-                value,
-                _,
-                policy_logits,
-                hidden_state,
-                reward_hidden,
-            ) = model.initial_inference(obs_batch)
-    else:
-        value, _, policy_logits, hidden_state, reward_hidden = model.initial_inference(
-            obs_batch
-        )
+    with contextlib.ExitStack() as stack:
+        if config.amp_type == "torch_amp":
+            # use torch amp
+            stack.enter_context(autocast())
+        (
+            value,
+            _,
+            policy_logits,
+            hidden_state,
+            reward_hidden,
+        ) = model.initial_inference(obs_batch)
     scaled_value = config.inverse_value_transform(value)
 
     if vis_result:
@@ -166,143 +166,21 @@ def update_weights(
 
     # loss of the first step
     value_loss = config.scalar_value_loss(value, target_value_phi[:, 0])
-    policy_loss = -(torch.log_softmax(policy_logits, dim=1) * target_policy[:, 0]).sum(
-        1
-    )
+    policy_loss = -(torch.log_softmax(policy_logits, dim=1) * target_policy[:, 0]).sum(1)
     value_prefix_loss = torch.zeros(batch_size, device=config.device)
-    consistency_loss = torch.zeros(batch_size, device=config.device)
 
     target_value_prefix_cpu = target_value_prefix.detach().cpu()
     gradient_scale = 1 / config.num_unroll_steps
+
+    # In our modified EfficientZero repo, we apply consistency (SSL) loss on tensors of all timesteps [batch, time, ...]
+    consist_preds = []
+    consist_targs = []
+
     # loss of the unrolled steps
-    if config.amp_type == "torch_amp":
-        # use torch amp
-        with autocast():
-            for step_i in range(config.num_unroll_steps):
-                # unroll with the dynamics function
-                (
-                    value,
-                    value_prefix,
-                    policy_logits,
-                    hidden_state,
-                    reward_hidden,
-                ) = model.recurrent_inference(
-                    hidden_state, reward_hidden, action_batch[:, step_i]
-                )
-
-                beg_index = config.image_channel * step_i
-                end_index = config.image_channel * (
-                    step_i + config.stacked_observations
-                )
-
-                # consistency loss
-                if config.consistency_coeff > 0:
-                    # obtain the oracle hidden states from representation function
-                    _, _, _, presentation_state, _ = model.initial_inference(
-                        obs_target_batch[:, beg_index:end_index, :, :]
-                    )
-                    # no grad for the presentation_state branch
-                    dynamic_proj = model.project(hidden_state, with_grad=True)
-                    observation_proj = model.project(
-                        presentation_state, with_grad=False
-                    )
-                    temp_loss = (
-                        consist_loss_func(dynamic_proj, observation_proj)
-                        * mask_batch[:, step_i]
-                    )
-
-                    other_loss["consist_" + str(step_i + 1)] = temp_loss.mean().item()
-                    consistency_loss += temp_loss
-
-                policy_loss += (
-                    -(
-                        torch.log_softmax(policy_logits, dim=1)
-                        * target_policy[:, step_i + 1]
-                    ).sum(1)
-                    * mask_batch[:, step_i]
-                )
-                value_loss += (
-                    config.scalar_value_loss(value, target_value_phi[:, step_i + 1])
-                    * mask_batch[:, step_i]
-                )
-                value_prefix_loss += (
-                    config.scalar_reward_loss(
-                        value_prefix, target_value_prefix_phi[:, step_i]
-                    )
-                    * mask_batch[:, step_i]
-                )
-                # Follow MuZero, set half gradient
-                hidden_state.register_hook(lambda grad: grad * 0.5)
-
-                # reset hidden states
-                if (step_i + 1) % config.lstm_horizon_len == 0:
-                    reward_hidden = (
-                        torch.zeros(1, config.batch_size, config.lstm_hidden_size).to(
-                            config.device
-                        ),
-                        torch.zeros(1, config.batch_size, config.lstm_hidden_size).to(
-                            config.device
-                        ),
-                    )
-
-                if vis_result:
-                    scaled_value_prefixs = config.inverse_reward_transform(
-                        value_prefix.detach()
-                    )
-                    scaled_value_prefixs_cpu = scaled_value_prefixs.detach().cpu()
-
-                    predicted_values = torch.cat(
-                        (
-                            predicted_values,
-                            config.inverse_value_transform(value).detach().cpu(),
-                        )
-                    )
-                    predicted_value_prefixs.append(scaled_value_prefixs_cpu)
-                    predicted_policies = torch.cat(
-                        (
-                            predicted_policies,
-                            torch.softmax(policy_logits, dim=1).detach().cpu(),
-                        )
-                    )
-                    state_lst = np.concatenate(
-                        (state_lst, hidden_state.detach().cpu().numpy())
-                    )
-
-                    key = "unroll_" + str(step_i + 1) + "_l1"
-
-                    value_prefix_indices_0 = (
-                        target_value_prefix_cpu[:, step_i].unsqueeze(-1) == 0
-                    )
-                    value_prefix_indices_n1 = (
-                        target_value_prefix_cpu[:, step_i].unsqueeze(-1) == -1
-                    )
-                    value_prefix_indices_1 = (
-                        target_value_prefix_cpu[:, step_i].unsqueeze(-1) == 1
-                    )
-
-                    target_value_prefix_base = (
-                        target_value_prefix_cpu[:, step_i].reshape(-1).unsqueeze(-1)
-                    )
-
-                    other_loss[key] = metric_loss(
-                        scaled_value_prefixs_cpu, target_value_prefix_base
-                    )
-                    if value_prefix_indices_1.any():
-                        other_loss[key + "_1"] = metric_loss(
-                            scaled_value_prefixs_cpu[value_prefix_indices_1],
-                            target_value_prefix_base[value_prefix_indices_1],
-                        )
-                    if value_prefix_indices_n1.any():
-                        other_loss[key + "_-1"] = metric_loss(
-                            scaled_value_prefixs_cpu[value_prefix_indices_n1],
-                            target_value_prefix_base[value_prefix_indices_n1],
-                        )
-                    if value_prefix_indices_0.any():
-                        other_loss[key + "_0"] = metric_loss(
-                            scaled_value_prefixs_cpu[value_prefix_indices_0],
-                            target_value_prefix_base[value_prefix_indices_0],
-                        )
-    else:
+    with contextlib.ExitStack() as stack:
+        if config.amp_type == "torch_amp":
+            # use torch amp
+            stack.enter_context(autocast())
         for step_i in range(config.num_unroll_steps):
             # unroll with the dynamics function
             (
@@ -316,24 +194,24 @@ def update_weights(
             )
 
             beg_index = config.image_channel * step_i
-            end_index = config.image_channel * (step_i + config.stacked_observations)
+            end_index = config.image_channel * (
+                step_i + config.stacked_observations
+            )
 
             # consistency loss
             if config.consistency_coeff > 0:
+                consist_preds.append(
+                    model.project(hidden_state),
+                )
                 # obtain the oracle hidden states from representation function
-                _, _, _, presentation_state, _ = model.initial_inference(
-                    obs_target_batch[:, beg_index:end_index, :, :]
-                )
-                # no grad for the presentation_state branch
-                dynamic_proj = model.project(hidden_state, with_grad=True)
-                observation_proj = model.project(presentation_state, with_grad=False)
-                temp_loss = (
-                    consist_loss_func(dynamic_proj, observation_proj)
-                    * mask_batch[:, step_i]
-                )
-
-                other_loss["consist_" + str(step_i + 1)] = temp_loss.mean().item()
-                consistency_loss += temp_loss
+                with torch.no_grad():
+                    consist_targs.append(
+                        model.project(
+                            model.target_embedding(
+                                obs_target_batch[:, beg_index:end_index, :, :]
+                            )
+                        )
+                    )
 
             policy_loss += (
                 -(
@@ -423,6 +301,21 @@ def update_weights(
                         scaled_value_prefixs_cpu[value_prefix_indices_0],
                         target_value_prefix_base[value_prefix_indices_0],
                     )
+
+    # compute consistency loss
+
+    consistency_losses = model.consistency_loss_unreduced(
+        torch.stack(consist_preds, 1),
+        action_batch,
+        torch.stack(consist_targs, 1),
+        mask=mask_batch,
+    )
+    assert consistency_losses.shape == mask_batch.shape  # [batch, time]
+
+    for step_i, l in zip(range(consistency_losses.shape[0]), consistency_losses.mean(0).tolist()):
+        other_loss["consist_" + str(step_i + 1)] = l
+    consistency_loss = consistency_losses.sum(dim=1)  # [batch]
+
     # ----------------------------------------------------------------------------------
     # weighted loss with masks (some invalid states which are out of trajectory.)
     loss = (

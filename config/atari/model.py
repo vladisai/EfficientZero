@@ -36,7 +36,7 @@ def mlp(
             act = activation
             layers += [
                 nn.Linear(sizes[i], sizes[i + 1]),
-                nn.BatchNorm1d(sizes[i + 1], momentum=momentum),
+                BatchNorm1dLastDim(sizes[i + 1], momentum=momentum),
                 act(),
             ]
         else:
@@ -257,12 +257,12 @@ class DynamicsNetwork(nn.Module):
             ]
         )
 
-        self.reward_resblocks = nn.ModuleList(
-            [
-                ResidualBlock(num_channels - 1, num_channels - 1, momentum=momentum)
-                for _ in range(num_blocks)
-            ]
-        )
+        # self.reward_resblocks = nn.ModuleList(
+        #     [
+        #         ResidualBlock(num_channels - 1, num_channels - 1, momentum=momentum)
+        #         for _ in range(num_blocks)
+        #     ]
+        # )
 
         self.conv1x1_reward = nn.Conv2d(num_channels - 1, reduced_channels_reward, 1)
         self.bn_reward = nn.BatchNorm2d(reduced_channels_reward, momentum=momentum)
@@ -270,7 +270,7 @@ class DynamicsNetwork(nn.Module):
         self.lstm = nn.LSTM(
             input_size=self.block_output_size_reward, hidden_size=self.lstm_hidden_size
         )
-        self.bn_value_prefix = nn.BatchNorm1d(self.lstm_hidden_size, momentum=momentum)
+        self.bn_value_prefix = BatchNorm1dLastDim(self.lstm_hidden_size, momentum=momentum)
         self.fc = mlp(
             self.lstm_hidden_size,
             fc_reward_layers,
@@ -415,6 +415,11 @@ class PredictionNetwork(nn.Module):
         value = self.fc_value(value)
         policy = self.fc_policy(policy)
         return policy, value
+
+
+class BatchNorm1dLastDim(nn.BatchNorm1d):
+    def forward(self, input):
+        return super().forward(input.flatten(0, -2)).unflatten(0, input.shape[:-1])
 
 
 class EfficientZeroNet(BaseNet):
@@ -579,17 +584,17 @@ class EfficientZeroNet(BaseNet):
         self.porjection_in_dim = in_dim
         self.projection = nn.Sequential(
             nn.Linear(self.porjection_in_dim, self.proj_hid),
-            nn.BatchNorm1d(self.proj_hid),
+            BatchNorm1dLastDim(self.proj_hid),
             nn.ReLU(),
             nn.Linear(self.proj_hid, self.proj_hid),
-            nn.BatchNorm1d(self.proj_hid),
+            BatchNorm1dLastDim(self.proj_hid),
             nn.ReLU(),
             nn.Linear(self.proj_hid, self.proj_out),
-            nn.BatchNorm1d(self.proj_out),
+            BatchNorm1dLastDim(self.proj_out),
         )
         self.projection_head = nn.Sequential(
             nn.Linear(self.proj_out, self.pred_hid),
-            nn.BatchNorm1d(self.pred_hid),
+            BatchNorm1dLastDim(self.pred_hid),
             nn.ReLU(),
             nn.Linear(self.pred_hid, self.pred_out),
         )
@@ -608,6 +613,7 @@ class EfficientZeroNet(BaseNet):
 
     def dynamics(self, encoded_state, reward_hidden, action):
         # Stack encoded_state with a game specific one hot encoded action
+        # @ssnl: not really one-hot. See https://github.com/YeWR/EfficientZero/issues/17
         action_one_hot = (
             torch.ones(
                 (
@@ -641,14 +647,11 @@ class EfficientZeroNet(BaseNet):
 
         return reward_w_dist, representation_mean, dynamic_mean, reward_mean
 
-    def project(self, hidden_state, with_grad=True):
+    def project(self, hidden_state):
         # only the branch of proj + pred can share the gradients
         hidden_state = hidden_state.view(-1, self.porjection_in_dim)
         proj = self.projection(hidden_state)
+        return proj
 
-        # with grad, use proj_head
-        if with_grad:
-            proj = self.projection_head(proj)
-            return proj
-        else:
-            return proj.detach()
+    def pred_project(self, projected):
+        return self.projection_head(projected)

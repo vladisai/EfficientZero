@@ -1,3 +1,5 @@
+from typing import *
+
 import os
 import time
 import torch
@@ -53,6 +55,9 @@ class BaseConfig(object):
         gray_scale: bool = False,
         episode_life: bool = False,
         change_temperature: bool = True,
+        rl_ssl_ckpt: Optional[str] = None,  # for loading rl_ssl
+        rl_ssl_freeze_backbone_forward_model: bool = False,  # for loading rl_ssl
+        rl_ssl_load_loss: bool = False,  # for loading rl_ssl
         init_zero: bool = False,
         state_norm: bool = False,
         clip_reward: bool = False,
@@ -202,6 +207,11 @@ class BaseConfig(object):
         self.auto_td_steps_ratio = auto_td_steps_ratio
         self.episode_life = episode_life
         self.change_temperature = change_temperature
+
+        self.rl_ssl_ckpt = rl_ssl_ckpt
+        self.rl_ssl_freeze_backbone_forward_model = rl_ssl_freeze_backbone_forward_model
+        self.rl_ssl_load_loss = rl_ssl_load_loss
+
         self.init_zero = init_zero
         self.state_norm = state_norm
         self.clip_reward = clip_reward
