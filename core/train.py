@@ -302,19 +302,19 @@ def update_weights(
                         target_value_prefix_base[value_prefix_indices_0],
                     )
 
-    # compute consistency loss
+        # compute consistency loss
 
-    consistency_losses = model.consistency_loss_unreduced(
-        torch.stack(consist_preds, 1),
-        action_batch,
-        torch.stack(consist_targs, 1),
-        mask=mask_batch,
-    )
-    assert consistency_losses.shape == mask_batch.shape  # [batch, time]
+        consistency_losses = model.consistency_loss_unreduced(
+            torch.stack(consist_preds, 1),
+            action_batch,
+            torch.stack(consist_targs, 1),
+            mask=mask_batch,
+        )
+        assert consistency_losses.shape == mask_batch.shape  # [batch, time]
 
-    for step_i, l in zip(range(consistency_losses.shape[0]), consistency_losses.mean(0).tolist()):
-        other_loss["consist_" + str(step_i + 1)] = l
-    consistency_loss = consistency_losses.sum(dim=1)  # [batch]
+        for step_i, l in zip(range(consistency_losses.shape[0]), consistency_losses.mean(0).tolist()):
+            other_loss["consist_" + str(step_i + 1)] = l
+        consistency_loss = consistency_losses.sum(dim=1)  # [batch]
 
     # ----------------------------------------------------------------------------------
     # weighted loss with masks (some invalid states which are out of trajectory.)
