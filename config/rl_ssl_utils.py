@@ -24,6 +24,11 @@ def load_RL_SSL_model(ckpt: str):
     return model, loss
 
 
+def get_RL_SSL_checkpoint_input_channels(ckpt: str) -> int:
+    ckpt = torch.load(ckpt, map_location='cpu')
+    config: Config = ckpt['args']
+    return config.model.backbone.input_channels
+
 
 class ValuePrefixLSTM(nn.Module):
     def __init__(
@@ -113,7 +118,6 @@ class RLSSLPretrainedNet(BaseNet):
         lstm_hidden_size,
         action_space_size,
         num_blocks,
-        num_channels,
         reduced_channels_reward,
         reduced_channels_value,
         reduced_channels_policy,
@@ -182,7 +186,7 @@ class RLSSLPretrainedNet(BaseNet):
         self.prediction_network = PredictionNetwork(
             action_space_size,
             num_blocks,
-            num_channels,
+            self.backbone.out_size,
             reduced_channels_value,
             reduced_channels_policy,
             fc_value_layers,
@@ -298,3 +302,4 @@ class RLSSLPretrainedNet(BaseNet):
 
     def extra_repr(self) -> str:
         return f"ckpt={self.ckpt}, freeze={self.freeze}"
+

@@ -72,9 +72,7 @@ class AtariConfig(BaseConfig):
 
         self.bn_mt = 0.1
         self.blocks = 1  # Number of blocks in the ResNet
-        self.channels = 64  # Number of channels in the ResNet
-        if self.gray_scale:
-            self.channels = 32
+        # self.channels is a property so that it dynamically changes with self.gray_scale
         self.reduced_channels_reward = 16  # x36 Number of channels in reward head
         self.reduced_channels_value = 16  # x36 Number of channels in value head
         self.reduced_channels_policy = 16  # x36 Number of channels in policy head
@@ -89,6 +87,13 @@ class AtariConfig(BaseConfig):
         ]  # Define the hidden layers in the policy head of the prediction network
         self.downsample = True  # Downsample observations before representation network (See paper appendix Network Architecture)
 
+    @property
+    def channels(self) -> int:
+        channels = 64  # Number of channels in the ResNet
+        if self.gray_scale:
+            channels = 32
+        return channels
+
     def visit_softmax_temperature_fn(self, num_moves, trained_steps):
         if self.change_temperature:
             if trained_steps < 0.5 * (self.training_steps):
@@ -102,15 +107,16 @@ class AtariConfig(BaseConfig):
 
     def set_game(self, env_name, save_video=False, save_path=None, video_callable=None):
         self.env_name = env_name
-        # gray scale
         if self.rl_ssl_ckpt is None:
+            # gray scale
             if self.gray_scale:
                 self.image_channel = 1
             obs_shape = (self.image_channel, 96, 96)
         else:
+            from config.rl_ssl_utils import get_RL_SSL_checkpoint_input_channels
             # RL_SSL pretrained only does 84x84
-            assert self.gray_scale
-            self.image_channel = 1
+            self.image_channel = get_RL_SSL_checkpoint_input_channels(self.rl_ssl_ckpt)
+            self.gray_scale = (self.image_channel == 1)
             obs_shape = (self.image_channel, 84, 84)
         self.obs_shape = (
             obs_shape[0] * self.stacked_observations,
@@ -150,7 +156,7 @@ class AtariConfig(BaseConfig):
             )
         else:
             from config.rl_ssl_utils import RLSSLPretrainedNet
-            return RLSSLPretrainedNet(
+            model = RLSSLPretrainedNet(
                 self.rl_ssl_ckpt,
                 self.rl_ssl_freeze_backbone_forward_model,
                 self.rl_ssl_load_loss,
@@ -159,7 +165,6 @@ class AtariConfig(BaseConfig):
                 self.lstm_hidden_size,
                 self.action_space_size,
                 self.blocks,
-                self.channels,
                 self.reduced_channels_reward,
                 self.reduced_channels_value,
                 self.reduced_channels_policy,
@@ -176,6 +181,7 @@ class AtariConfig(BaseConfig):
                 init_zero=self.init_zero,
                 state_norm=self.state_norm,
             )
+            return model
 
     def new_game(
         self,
