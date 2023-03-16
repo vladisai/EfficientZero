@@ -103,9 +103,15 @@ class AtariConfig(BaseConfig):
     def set_game(self, env_name, save_video=False, save_path=None, video_callable=None):
         self.env_name = env_name
         # gray scale
-        if self.gray_scale:
+        if self.rl_ssl_ckpt is None:
+            if self.gray_scale:
+                self.image_channel = 1
+            obs_shape = (self.image_channel, 96, 96)
+        else:
+            # RL_SSL pretrained only does 84x84
+            assert self.gray_scale
             self.image_channel = 1
-        obs_shape = (self.image_channel, 96, 96)
+            obs_shape = (self.image_channel, 84, 84)
         self.obs_shape = (
             obs_shape[0] * self.stacked_observations,
             obs_shape[1],
