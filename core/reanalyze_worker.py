@@ -1,6 +1,7 @@
 import ray
 import time
 import torch
+import contextlib
 
 import numpy as np
 import core.ctree.cytree as cytree
@@ -394,10 +395,9 @@ class BatchWorker_GPU(object):
                     .float()
                     / 255.0
                 )
-                if self.config.amp_type == "torch_amp":
-                    with autocast():
-                        m_output = self.model.initial_inference(m_obs)
-                else:
+                with contextlib.ExitStack() as stack:
+                    if self.config.amp_type == "torch_amp":
+                        stack.enter_context(autocast())
                     m_output = self.model.initial_inference(m_obs)
                 network_output.append(m_output)
 

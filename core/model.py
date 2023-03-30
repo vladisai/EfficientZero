@@ -3,6 +3,7 @@ import typing
 
 import numpy as np
 import torch.nn as nn
+import torch.nn.functional as F
 
 from typing import List
 
@@ -77,6 +78,27 @@ class BaseNet(nn.Module):
         self.inverse_reward_transform = inverse_reward_transform
         self.lstm_hidden_size = lstm_hidden_size
 
+    def consistency_loss_unreduced(self, proj: torch.Tensor, action: torch.Tensor,
+                                   target: torch.Tensor, mask: torch.Tensor):
+        """Consistency loss function: similarity loss
+
+        Default is EfficientZero's BYOL-like loss.
+
+        NB that, unlike original EfficientZero repo, which applies this function for each timestep and sum them up, this
+        should be used on [batch, time, D] tensors.
+        """
+        pred = self.pred_project(proj)
+        f1 = F.normalize(pred, p=2.0, dim=-1, eps=1e-5)
+        f2 = F.normalize(target, p=2.0, dim=-1, eps=1e-5)
+        return -(f1 * f2).sum(dim=-1).mul(mask)
+
+    def project(self, hidden_state):
+        raise NotImplementedError
+
+    def pred_project(self, projected):
+        # predict the target projected vectors
+        raise NotImplementedError
+
     def prediction(self, state):
         raise NotImplementedError
 
@@ -85,6 +107,9 @@ class BaseNet(nn.Module):
 
     def dynamics(self, state, reward_hidden, action):
         raise NotImplementedError
+
+    def target_embedding(self, obs):
+        return self.representation(obs)
 
     def initial_inference(self, obs) -> NetworkOutput:
         num = obs.size(0)
@@ -105,8 +130,8 @@ class BaseNet(nn.Module):
         else:
             # zero initialization for reward (value prefix) hidden states
             reward_hidden = (
-                torch.zeros(1, num, self.lstm_hidden_size).to("cuda"),
-                torch.zeros(1, num, self.lstm_hidden_size).to("cuda"),
+                torch.zeros(1, num, self.lstm_hidden_size, device=obs.device),
+                torch.zeros(1, num, self.lstm_hidden_size, device=obs.device),
             )
 
         return NetworkOutput(

@@ -24,6 +24,23 @@ if __name__ == "__main__":
         help="Directory Path to store results (default: %(default)s)",
     )
     parser.add_argument(
+        "--rl_ssl_ckpt",
+        default=None,
+        help="RL SSL checkpoint file to load (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--rl_ssl_freeze_backbone_forward_model",
+        action="store_true",
+        default=False,
+        help="RL SSL whether to freeze weights (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--rl_ssl_load_loss",
+        action="store_true",
+        default=False,
+        help="RL SSL whether to use RL SSL's SSL loss (default: %(default)s)",
+    )
+    parser.add_argument(
         "--case",
         required=True,
         choices=["atari", "crafter"],
@@ -162,8 +179,14 @@ if __name__ == "__main__":
     # import corresponding configuration , neural networks and envs
     if args.case == "atari":
         from config.atari import game_config
+
+        game_config.rl_ssl_ckpt = args.rl_ssl_ckpt
+        game_config.rl_ssl_freeze_backbone_forward_model = args.rl_ssl_freeze_backbone_forward_model
+        game_config.rl_ssl_load_loss = args.rl_ssl_load_loss
     elif args.case == "crafter":
         from config.crafter import game_config
+
+        # TODO: add RL SSL loading
 
         game_config.target_goal = args.target_goal
         game_config.set_steps(args.training_steps)
